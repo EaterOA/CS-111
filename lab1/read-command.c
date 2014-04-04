@@ -35,42 +35,45 @@ command_t parse_simple_command(char** c)
     com->type = SIMPLE_COMMAND;
     com->input = NULL;
     com->output = NULL;
-    
-    char* buf1 = (char*)checked_malloc(512 * sizeof(char));
-    char* buf2 = (char*)checked_malloc(512 * sizeof(char));
-    int buf1_size = 0, buf2_size = 0;
+   
+    int num = 0; 
+    char* buf = (char*)checked_malloc(512 * sizeof(char));
+    int buf_size = 0;
     char* curr = *c;
-    int second = 0;
     for(;;curr++)
     {
 	char ch = *curr;
 	if(ch != ';' && ch != '|' && ch != '&' && ch != '(' &&
 	   ch != ')' && ch != '<' && ch != '>')
 	{
-	    if(!second)
+	    if(ch != ' ')
 	    {
-		if(ch != ' ')
-		{
-		    buf1[buf1_size] = ch;
-		    buf1_size++;
-		}
-		else
-		    second = 1;
+	        buf[buf_size] = ch;
+	        buf_size++;
 	    }
 	    else
 	    {
-		buf2[buf2_size] = ch;
-		buf2_size++;
+		buf[buf_size] = '\0';
+		buf_size++;
+		num++;
 	    }
 	}
 	else
 	    break;
     }
-    buf1[buf1_size] = '\0';
-    buf2[buf2_size] = '\0';
-    com->u.word = (char**)checked_malloc(2 * sizeof(char*));
-    com->u.word[0] = buf1;
-    com->u.word[1] = buf2;
+    buf[buf_size] = '\0';
+    com->u.word = (char**)checked_malloc(num * sizeof(char*));
+    curr = buf;
+    com->u.word[0] = curr;
+    int i;
+    for(i = 1; i < num; i++)
+    {
+	while(*curr != '\0') 
+	    curr++;
+
+	curr++;
+	com->u.word[i] = curr;
+    }
     return com;
 }
     
