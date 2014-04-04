@@ -24,6 +24,16 @@ struct command_stream
     command_node_t head;
 };
 
+command_t parse_simple_command(char** c)
+{
+    command_t com = (command_t)checked_malloc(sizeof(struct command));
+    com->type = SIMPLE_COMMAND;
+    com->input = NULL;
+    com->output = NULL;
+    com->u.word = c;
+    return com;
+}
+
 command_stream_t
 make_command_stream (int (*get_next_byte) (void *),
 		     void *get_next_byte_argument)
