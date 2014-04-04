@@ -47,33 +47,34 @@ command_t parse_simple_command(char** c)
     command_t com = allocate_command();
     com->type = SIMPLE_COMMAND;
    
-    int num = 0; 
-    char* buf = (char*)checked_malloc(512 * sizeof(char));
-    int buf_size = 0;
-    char* curr = *c;
-    for(;;curr++)
+    int num = 0;
+    size_t buf_size = 0, max_size = 128;
+    char* buf = (char*)checked_malloc(max_size * sizeof(char));
+    for(;; (*c)++)
     {
-	char ch = *curr;
-	if(ch != ';' && ch != '|' && ch != '&' && ch != '(' &&
-	   ch != ')' && ch != '<' && ch != '>' && ch != '\n')
-	{
-	    if(ch != ' ')
-	    {
-	        buf[buf_size] = ch;
-	        buf_size++;
-	    }
-	    else
-	    {
-		buf[buf_size] = '\0';
-		buf_size++;
-		num++;
-	    }
-	}
-	else
-	{
-	    num++;
-	    break;
-	}
+        if (buf_size == max_size) 
+            buf = (char*)checked_grow_alloc(buf, &max_size);
+        char ch = **c;
+        if(ch != ';' && ch != '|' && ch != '&' && ch != '(' &&
+           ch != ')' && ch != '<' && ch != '>' && ch != '\n')
+        {
+            if(ch != ' ')
+            {
+                buf[buf_size] = ch;
+                buf_size++;
+            }
+            else
+            {
+                buf[buf_size] = '\0';
+                buf_size++;
+                num++;
+            }
+        }
+        else
+        {
+            num++;
+            break;
+        }
     }
 
     if(buf_size == 0)
@@ -81,16 +82,16 @@ command_t parse_simple_command(char** c)
 
     buf[buf_size] = '\0';
     com->u.word = (char**)checked_malloc(num * sizeof(char*));
-    curr = buf;
+    char* curr = buf;
     com->u.word[0] = curr;
     int i;
     for(i = 1; i < num; i++)
     {
-	while(*curr != '\0') 
-	    curr++;
+        while(*curr != '\0') 
+            curr++;
 
-	curr++;
-	com->u.word[i] = curr;
+        curr++;
+        com->u.word[i] = curr;
     }
     return com;
 }
@@ -102,18 +103,19 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
     
     command_t link, next;
     while (1) {
-        if (isTopLevel && (**c == ';' || **c == '\n')) return cmd;
-        if (isTopLevel && **c == ')') return error_ret(err);
-        if (!isTopLevel && **c == ')') return cmd;
-        if (!isTopLevel && **c == '\n') return error_ret(err);
+        char ch = **c;
+        if (isTopLevel && (ch == ';' || ch == '\n')) return cmd;
+        if (isTopLevel && ch == ')') return error_ret(err);
+        if (!isTopLevel && ch == ')') return cmd;
+        if (!isTopLevel && ch == '\n') return error_ret(err);
         
         link = allocate_command();
-        if (**c == '&') {
+        if (ch == '&') {
             (*c)++;
             if (*(*c)++ != '&') return NULL;
             link->type = AND_COMMAND;
         }
-        else if (**c == '|') {
+        else if (ch == '|') {
             (*c)++;
             if (**c == '|') {
                 (*c)++;
@@ -123,7 +125,7 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
                 link->type = PIPE_COMMAND;
             }
         }
-        else if (**c == ';') {
+        else if (ch == ';') {
             (*c)++;
             link->type = SEQUENCE_COMMAND;
         }
@@ -153,17 +155,17 @@ make_command_stream (int (*get_next_byte) (void *),
     command_stream_t cs = (command_stream_t)checked_malloc(sizeof(struct command_stream));
     
     //Read the entire script into a buf
-    size_t bufsize = 0, maxsize = 512;
-    char* buf = (char*)checked_malloc(maxsize * sizeof(char));
+    size_t buf_size = 0, max_size = 512;
+    char* buf = (char*)checked_malloc(max_size * sizeof(char));
     while (1) {
         int c = get_next_byte(get_next_byte_argument);
-        if (bufsize == maxsize) 
-            buf = (char*)checked_grow_alloc(buf, &maxsize);
+        if (buf_size == max_size) 
+            buf = (char*)checked_grow_alloc(buf, &max_size);
         if (c == -1) {
-            buf[bufsize++] = '\0';
+            buf[buf_size++] = '\0';
             break;
         }
-        buf[bufsize++] = (char)c;
+        buf[buf_size++] = (char)c;
     }
     
     //Construct nodes from each root command
