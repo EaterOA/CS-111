@@ -59,7 +59,10 @@ command_t parse_simple_command(char** c)
 	    }
 	}
 	else
+	{
+	    num++;
 	    break;
+	}
     }
     buf[buf_size] = '\0';
     com->u.word = (char**)checked_malloc(num * sizeof(char*));
