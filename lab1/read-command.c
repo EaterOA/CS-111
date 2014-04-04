@@ -24,6 +24,11 @@ struct command_stream
     command_node_t head;
 };
 
+command_t allocate_command()
+{
+    return (command_t)checked_malloc(sizeof(struct command));
+}
+
 command_t parse_simple_command(char** c)
 {
     command_t com = (command_t)checked_malloc(sizeof(struct command));
@@ -32,6 +37,29 @@ command_t parse_simple_command(char** c)
     com->output = NULL;
     com->u.word = c;
     return com;
+}
+    
+command_t parse_root_command(char** c, char isTopLevel)
+{
+    command_t cmd = parse_simple_command(c);
+    command_t link, next;
+    if (!cmd) return NULL;
+    while (1) {
+        if (isTopLevel) {
+            if (!**c || **c == '\n' || **c == ';') return cmd;
+            if (**c == '&') {
+                (*c)++;
+                if (*(*c)++ != '&') return NULL;
+                link = allocate_command();
+                link->type = AND_COMMAND;
+            }
+        }
+        next = parse_simple_command(c);
+        link->u.command[0] = cmd;
+        link->u.command[1] = next;
+        cmd = link;
+    }
+    return cmd;
 }
 
 command_stream_t
