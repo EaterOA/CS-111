@@ -44,7 +44,7 @@ command_t parse_simple_command(char** c)
     {
 	char ch = *curr;
 	if(ch != ';' && ch != '|' && ch != '&' && ch != '(' &&
-	   ch != ')' && ch != '<' && ch != '>')
+	   ch != ')' && ch != '<' && ch != '>' && ch != '\n')
 	{
 	    if(ch != ' ')
 	    {
@@ -64,6 +64,10 @@ command_t parse_simple_command(char** c)
 	    break;
 	}
     }
+
+    if(buf_size == 0)
+	return NULL;
+
     buf[buf_size] = '\0';
     com->u.word = (char**)checked_malloc(num * sizeof(char*));
     curr = buf;
