@@ -11,9 +11,17 @@
 
 /* FIXME: Define the type 'struct command_stream' here.  This should
    complete the incomplete type declaration in command.h.  */
+typedef struct command_node* command_node_t;
+
+struct command_node
+{
+    command_t command;
+    command_node_t next;
+};
+
 struct command_stream
 {
-    int dummy;
+    command_node_t head;
 };
 
 command_stream_t
@@ -21,13 +29,16 @@ make_command_stream (int (*get_next_byte) (void *),
 		     void *get_next_byte_argument)
 {
     command_stream_t cs = (command_stream_t)checked_malloc(sizeof(struct command_stream));
-    cs->dummy = (long)(get_next_byte)+(long)(get_next_byte_argument); //Remove
+    cs->head = NULL;
+    int c;
+    while ((c = get_next_byte(get_next_byte_argument)) != -1)
+        continue;
     return cs;
 }
 
 command_t
 read_command_stream (command_stream_t s)
 {
-    s->dummy = 0; //Remove
+    s->head = 0; //Remove
     return 0;
 }
