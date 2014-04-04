@@ -90,16 +90,41 @@ command_t parse_root_command(char** c, char isTopLevel)
     command_t link, next;
     if (!cmd) return NULL;
     while (1) {
-        if (isTopLevel) {
-            if (!**c || **c == '\n' || **c == ';') return cmd;
-            if (**c == '&') {
+        if (isTopLevel && (**c == ';' || **c == '\n')) return cmd;
+        if (isTopLevel && **c == ')') return NULL;
+        if (!isTopLevel && **c == ')') return cmd;
+        if (!isTopLevel && **c == '\n') return NULL;
+        if (**c == '(') return NULL;
+        
+        link = allocate_command();
+        if (**c == '&') {
+            (*c)++;
+            if (*(*c)++ != '&') return NULL;
+            link->type = AND_COMMAND;
+        }
+        else if (**c == '|') {
+            (*c)++;
+            if (**c == '|') {
                 (*c)++;
-                if (*(*c)++ != '&') return NULL;
-                link = allocate_command();
-                link->type = AND_COMMAND;
+                link->type = OR_COMMAND;
+            }
+            else {
+                link->type = PIPE_COMMAND;
             }
         }
+        else if (**c == ';') {
+            (*c)++;
+            link->type = SEQUENCE_COMMAND;
+        }
         next = parse_simple_command(c);
+        if (!next) {
+            if (**c == '(') {
+                (*c)++;
+                next = parse_root_command(c, 0);
+                if (!next) return NULL;
+            }
+            else return NULL;
+        }
         link->u.command[0] = cmd;
         link->u.command[1] = next;
         cmd = link;
