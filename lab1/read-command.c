@@ -4,6 +4,7 @@
 #include "command-internals.h"
 #include <error.h>
 #include "alloc.h"
+#include "stack.h"
 #include <stdlib.h>
 #include <stdio.h>
 
