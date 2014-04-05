@@ -23,17 +23,20 @@ struct command_stream
 
 bool is_valid_token(char c)
 {
-   if(c >= 'A' && c <= 'z')
-	return true;
+   if(c >= 'A' && c <= 'Z')
+        return true;
+
+   if(c >= 'a' && c <= 'z')
+        return true;
 
    if(c >= '0' && c <= '9')
-	return true;
+        return true;
 
    if(c == '!' || c == '%' || c == '+' ||
       c == ',' || c == '-' || c == '.' ||
       c == '/' || c == ':' || c == '@' ||
       c == '^' || c == '_')
-	return true;
+        return true;
 
    return false;
 }
