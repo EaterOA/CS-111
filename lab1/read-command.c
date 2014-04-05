@@ -128,10 +128,10 @@ command_t parse_simple_command(char** c, int* err)
             {
                 buf[buf_size] = '\0';
                 buf_size++;
-                skipspace(c);
                 num++;
             }
-	    
+            (*c)++;
+            skipspace(c);
             while((**c) != ' ' && (**c))
             {
                 if (in_buf_size == max_size) 
@@ -165,10 +165,10 @@ command_t parse_simple_command(char** c, int* err)
             {
                 buf[buf_size] = '\0';
                 buf_size++;
-                skipspace(c);
                 num++;
             }
-    
+            (*c)++;
+            skipspace(c);
             while((**c) != ' ' && (**c))
             {
                 if (out_buf_size == max_size) 
@@ -202,7 +202,8 @@ command_t parse_simple_command(char** c, int* err)
         else
         {
             if(ch == '|' || ch == '&' || ch == '(' ||
-                ch == ')' || ch == ';' || ch == '\n')
+                ch == ')' || ch == ';' || ch == '\n' || 
+		!ch)
             {
                 num++;
                 break;
