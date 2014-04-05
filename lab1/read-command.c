@@ -43,9 +43,14 @@ void* error_ret(int* err)
     return NULL;
 }
 
+void skipspace(char** c)
+{
+    while (**c == ' ') (*c)++;
+}
+
 command_t parse_simple_command(char** c)
 {
-    while (**c == ' ' || **c == '\n') (*c)++;
+    skipspace(c);
 
     command_t com = allocate_command();
     com->type = SIMPLE_COMMAND;
@@ -53,7 +58,7 @@ command_t parse_simple_command(char** c)
     int num = 0;
     size_t buf_size = 0, max_size = 128;
     char* buf = (char*)checked_malloc(max_size * sizeof(char));
-    for(;; (*c)++)
+    for (;;)
     {
         if (buf_size == max_size) 
             buf = (char*)checked_grow_alloc(buf, &max_size);
@@ -66,12 +71,13 @@ command_t parse_simple_command(char** c)
             {
                 buf[buf_size] = ch;
                 buf_size++;
+                (*c)++;
             }
             else
             {
                 buf[buf_size] = '\0';
                 buf_size++;
-                while (*(*c+1) == ' ') (*c)++;
+                skipspace(c);
                 num++;
             }
         }
@@ -83,7 +89,7 @@ command_t parse_simple_command(char** c)
     }
 
     if(buf_size == 0)
-	return NULL;
+        return NULL;
 
     buf[buf_size] = '\0';
     com->u.word = (char**)checked_malloc((num+1) * sizeof(char*));
@@ -104,16 +110,21 @@ command_t parse_simple_command(char** c)
     
 command_t parse_root_command(char** c, char isTopLevel, int* err)
 {
+    command_t link, next;
     command_t cmd = parse_simple_command(c);
     if (!cmd) {
         if (**c) return error_ret(err);
         return NULL;
     }
     
-    command_t link, next;
-    while (1) {
+    stack_t oprd = stack_init();
+    //stack_t optr = stack_init();
+    
+    stack_push(oprd, cmd);
+    
+    for (;;) {
         char ch = **c;
-        if (isTopLevel && (!ch || ch == ';' || ch == '\n')) return cmd;
+        if (isTopLevel && (!ch || ch == '\n')) return cmd;
         if (isTopLevel && ch == ')') return error_ret(err);
         if (!isTopLevel && ch == ')') return cmd;
         if (!isTopLevel && (!ch || ch == '\n')) return error_ret(err);
@@ -136,6 +147,13 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
         }
         else if (ch == ';') {
             (*c)++;
+            link->type = SEQUENCE_COMMAND;
+        }
+        else if (ch == '\n') {
+            if (!isTopLevel) return error_ret(err);
+            (*c)++;
+            skipspace(c);
+            if (**c == '\n')
             link->type = SEQUENCE_COMMAND;
         }
         else return error_ret(err);
@@ -167,7 +185,7 @@ make_command_stream (int (*get_next_byte) (void *),
     //Read the entire script into a buf
     size_t buf_size = 0, max_size = 512;
     char* buf = (char*)checked_malloc(max_size * sizeof(char));
-    while (1) {
+    for (;;) {
         int c = get_next_byte(get_next_byte_argument);
         if (buf_size == max_size) 
             buf = (char*)checked_grow_alloc(buf, &max_size);
