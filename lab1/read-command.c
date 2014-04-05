@@ -86,7 +86,7 @@ command_t parse_simple_command(char** c, int* err)
     {
         if (buf_size == max_size) 
             buf = (char*)checked_grow_alloc(buf, &max_size);	
-	char ch = **c;
+        char ch = **c;
 
         if(is_valid_token(ch))
         {
@@ -94,101 +94,101 @@ command_t parse_simple_command(char** c, int* err)
             buf_size++;
             (*c)++;          
         }
-	else if (ch == ' ')
-	{
-	    buf[buf_size] = '\0';
+        else if (ch == ' ')
+        {
+            buf[buf_size] = '\0';
             buf_size++;
             skipspace(c);
             num++;  
-	}
-	else if (ch == '<')
-	{
+        }
+        else if (ch == '<')
+        {
 	    if(buf[buf_size-1] != '\0')
-	    {
-		buf[buf_size] = '\0';
-		buf_size++;
-		skipspace(c);
-		num++;
-	    }
+            {
+                buf[buf_size] = '\0';
+                buf_size++;
+                skipspace(c);
+                num++;
+            }
 	    
-	    while((**c) != ' ' && (**c))
-	    {
-		if (in_buf_size == max_size) 
-            	    in_buf = (char*)checked_grow_alloc(in_buf, &max_size);
+            while((**c) != ' ' && (**c))
+            {
+                if (in_buf_size == max_size) 
+                    in_buf = (char*)checked_grow_alloc(in_buf, &max_size);
+
+                if(is_valid_token((**c)))
+                {
+                    in_buf[in_buf_size] = (**c);
+                    in_buf_size++; 
+                    (*c)++;
+                }
+                else if((**c) == '>')
+                    break;
+                else
+                {    
+             	    if((**c) == '|' || (**c) == '&' || (**c) == '(' ||
+                        (**c) == ')' || (**c)  == ';' || (**c) == '\n')
+                        break;
+                    else
+                        return error_ret(err);
+                }
+            }
+            in_buf[in_buf_size] = '\0';
+            in_buf_size++;
+            com->input = in_buf;
+            skipspace(c);
+        }
+        else if (ch == '>')
+        {
+            if(buf[buf_size-1] != '\0')
+            {
+                buf[buf_size] = '\0';
+                buf_size++;
+                skipspace(c);
+                num++;
+            }
+    
+            while((**c) != ' ' && (**c))
+            {
+                if (out_buf_size == max_size) 
+                    out_buf = (char*)checked_grow_alloc(out_buf, &max_size);
  
-		if(is_valid_token((**c)))
-		{
-		    in_buf[in_buf_size] = (**c);
-		    in_buf_size++; 
-		    (*c)++;
-		}
-		else if((**c) == '>')
-		    break;
-		else
-		{    
-	    	    if((**c) == '|' || (**c) == '&' || (**c) == '(' ||
-	       		(**c) == ')' || (**c)  == ';' || (**c) == '\n')
-			break;
-	    	    else
-			return error_ret(err);
-		}
-	    }
-	    in_buf[in_buf_size] = '\0';
-	    in_buf_size++;
-	    com->input = in_buf;
-	    skipspace(c);
-	}
-	else if (ch == '>')
-	{
-	    if(buf[buf_size-1] != '\0')
-	    {
-		buf[buf_size] = '\0';
-		buf_size++;
-		skipspace(c);
-		num++;
-	    }
-	    
-	    while((**c) != ' ' && (**c))
-	    {
-		if (out_buf_size == max_size) 
-            	    out_buf = (char*)checked_grow_alloc(out_buf, &max_size);
- 
-		if(is_valid_token((**c)))
-		{
-		    out_buf[out_buf_size] = (**c);
-		    out_buf_size++; 
-		    (*c)++;
-		}
-		else
-		{
-	    	    if((**c) == '|' || (**c) == '&' || (**c) == '(' ||
-	       		(**c) == ')' || (**c) == ';' || (**c) == '\n')
-			break;
-	    	    else
-			return error_ret(err);
-		}
-	    }
-	    out_buf[out_buf_size] = '\0';
-	    out_buf_size++;
-	    com->output = out_buf;
-	    skipspace(c);
-	}
+                if(is_valid_token((**c)))
+                {
+                    out_buf[out_buf_size] = (**c);
+                    out_buf_size++; 
+                    (*c)++;
+                }
+                else
+                {
+                    if((**c) == '|' || (**c) == '&' || (**c) == '(' ||
+                        (**c) == ')' || (**c) == ';' || (**c) == '\n')
+                        break;
+                    else
+                        return error_ret(err);
+                }
+            }
+            out_buf[out_buf_size] = '\0';
+            out_buf_size++;
+            com->output = out_buf;
+            skipspace(c);
+        }
         else if (!ch)
         {
             num++;
             break;
         }
-	else
-	{
-	    if(ch == '|' || ch == '&' || ch == '(' ||
-	       ch == ')' || ch == ';' || ch == '\n')
-	    {
-		num++;
-		break;
-	    }
-	    else
-		return error_ret(err);
-	}
+        else
+        {
+            if(ch == '|' || ch == '&' || ch == '(' ||
+                ch == ')' || ch == ';' || ch == '\n')
+            {
+                num++;
+                break;
+            }
+            else
+                return error_ret(err);
+        }
     }
 
     if(buf_size == 0)
