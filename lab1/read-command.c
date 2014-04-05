@@ -133,6 +133,8 @@ command_t parse_simple_command(char** c, int* err)
 			return error_ret(err);
 		}
 	    }
+	    in_buf[in_buf_size] = '\0';
+	    in_buf_size++;
 	    com->input = in_buf;
 	    skipspace(c);
 	}
@@ -166,6 +168,8 @@ command_t parse_simple_command(char** c, int* err)
 			return error_ret(err);
 		}
 	    }
+	    out_buf[out_buf_size] = '\0';
+	    out_buf_size++;
 	    com->output = out_buf;
 	    skipspace(c);
 	}
