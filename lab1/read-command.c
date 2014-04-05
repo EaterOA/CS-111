@@ -21,6 +21,23 @@ struct command_stream
     command_node_t head;
 };
 
+bool is_valid_token(char c)
+{
+   if(c >= 'A' && c <= 'z')
+	return true;
+
+   if(c >= '0' && c <= '9')
+	return true;
+
+   if(c == '!' || c == '%' || c == '+' ||
+      c == ',' || c == '-' || c == '.' ||
+      c == '/' || c == ':' || c == '@' ||
+      c == '^' || c == '_')
+	return true;
+
+   return false;
+}
+
 command_t allocate_command()
 {
     command_t cmd = (command_t)checked_malloc(sizeof(struct command));
@@ -48,44 +65,126 @@ void skipspace(char** c)
     while (**c == ' ') (*c)++;
 }
 
-command_t parse_simple_command(char** c)
+command_t parse_simple_command(char** c, int* err)
 {
     skipspace(c);
 
     command_t com = allocate_command();
     com->type = SIMPLE_COMMAND;
-   
+    com->input = NULL;
+    com->output = NULL;   
+
     int num = 0;
     size_t buf_size = 0, max_size = 128;
+    size_t in_buf_size = 0, out_buf_size = 0;
     char* buf = (char*)checked_malloc(max_size * sizeof(char));
+    char* in_buf = (char*)checked_malloc(max_size * sizeof(char));
+    char* out_buf = (char*)checked_malloc(max_size * sizeof(char));
+
+
     for (;;)
     {
         if (buf_size == max_size) 
-            buf = (char*)checked_grow_alloc(buf, &max_size);
-        char ch = **c;
-        if(ch != ';' && ch != '|' && ch != '&' && ch != '(' &&
-           ch != ')' && ch != '<' && ch != '>' && ch != '\n' &&
-           ch)
+            buf = (char*)checked_grow_alloc(buf, &max_size);	
+	char ch = **c;
+
+        if(is_valid_token(ch))
         {
-            if(ch != ' ')
-            {
-                buf[buf_size] = ch;
-                buf_size++;
-                (*c)++;
-            }
-            else
-            {
-                buf[buf_size] = '\0';
-                buf_size++;
-                skipspace(c);
-                num++;
-            }
+            buf[buf_size] = ch;
+            buf_size++;
+            (*c)++;          
         }
-        else
+	else if (ch == ' ')
+	{
+	    buf[buf_size] = '\0';
+            buf_size++;
+            skipspace(c);
+            num++;  
+	}
+	else if (ch == '<')
+	{
+	    if(buf[buf_size-1] != '\0')
+	    {
+		buf[buf_size] = '\0';
+		buf_size++;
+		skipspace(c);
+		num++;
+	    }
+	    
+	    while((**c) != ' ' && (**c))
+	    {
+		if (in_buf_size == max_size) 
+            	    in_buf = (char*)checked_grow_alloc(in_buf, &max_size);
+ 
+		if(is_valid_token((**c)))
+		{
+		    in_buf[in_buf_size] = (**c);
+		    in_buf_size++; 
+		    (*c)++;
+		}
+		else if((**c) == '>')
+		    break;
+		else
+		{    
+	    	    if((**c) == '|' || (**c) == '&' || (**c) == '(' ||
+	       		(**c) == ')' || (**c)  == ';' || (**c) == '\n')
+			break;
+	    	    else
+			return error_ret(err);
+		}
+	    }
+	    com->input = in_buf;
+	    skipspace(c);
+	}
+	else if (ch == '>')
+	{
+	    if(buf[buf_size-1] != '\0')
+	    {
+		buf[buf_size] = '\0';
+		buf_size++;
+		skipspace(c);
+		num++;
+	    }
+	    
+	    while((**c) != ' ' && (**c))
+	    {
+		if (out_buf_size == max_size) 
+            	    out_buf = (char*)checked_grow_alloc(out_buf, &max_size);
+ 
+		if(is_valid_token((**c)))
+		{
+		    out_buf[out_buf_size] = (**c);
+		    out_buf_size++; 
+		    (*c)++;
+		}
+		else
+		{
+	    	    if((**c) == '|' || (**c) == '&' || (**c) == '(' ||
+	       		(**c) == ')' || (**c) == ';' || (**c) == '\n')
+			break;
+	    	    else
+			return error_ret(err);
+		}
+	    }
+	    com->output = out_buf;
+	    skipspace(c);
+	}
+        else if (!ch)
         {
             num++;
             break;
         }
+	else
+	{
+	    if(ch == '|' || ch == '&' || ch == '(' ||
+	       ch == ')' || ch == ';' || ch == '\n')
+	    {
+		num++;
+		break;
+	    }
+	    else
+		return error_ret(err);
+	}
     }
 
     if(buf_size == 0)
@@ -111,7 +210,7 @@ command_t parse_simple_command(char** c)
 command_t parse_root_command(char** c, char isTopLevel, int* err)
 {
     command_t link, next;
-    command_t cmd = parse_simple_command(c);
+    command_t cmd = parse_simple_command(c, err);
     if (!cmd) {
         if (**c) return error_ret(err);
         return NULL;
@@ -158,7 +257,7 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
         }
         else return error_ret(err);
         
-        next = parse_simple_command(c);
+        next = parse_simple_command(c, err);
         if (!next) {
             if (**c == '(') {
                 (*c)++;
