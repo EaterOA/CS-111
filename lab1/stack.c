@@ -1,4 +1,5 @@
 #include "stack.h"
+#include <stdlib.h>
 #include <error.h>
 
 stack_t stack_init()
@@ -6,8 +7,15 @@ stack_t stack_init()
     stack_t s = (stack_t)checked_malloc(sizeof(struct stack));
     s->max_count = 16;
     s->count = 0;
-    s->data = (void**)checked_malloc(sizeof(void*));
+    s->data = (void**)checked_malloc(s->max_count * sizeof(void*));
     return s;
+}
+
+void stack_free(stack_t s)
+{
+    if (!s) error(1, 0, "Null stack point given to stack free");
+    free(s->data);
+    free(s);
 }
 
 void stack_push(stack_t s, void* element)

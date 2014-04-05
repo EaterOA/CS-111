@@ -68,6 +68,24 @@ void skipspace(char** c)
     while (**c == ' ') (*c)++;
 }
 
+void skipwhitespace(char** c)
+{
+    while (**c == ' ' || **c == '\n') (*c)++;
+}
+
+char precedes(command_t a, command_t b)
+{
+    //Checks if b precedes a
+    //Order: {PIPE}, {AND, OR}, {SEQUENCE}
+    if (b->type == PIPE_COMMAND) {
+        return a->type != PIPE_COMMAND;
+    }
+    else if (b->type == AND_COMMAND || b->type == OR_COMMAND) {
+        return a->type == SEQUENCE_COMMAND;
+    }
+    return 0;
+}
+
 command_t parse_simple_command(char** c, int* err)
 {
     skipspace(c);
@@ -106,7 +124,7 @@ command_t parse_simple_command(char** c, int* err)
         }
         else if (ch == '<')
         {
-	    if(buf[buf_size-1] != '\0')
+            if(buf[buf_size-1] != '\0')
             {
                 buf[buf_size] = '\0';
                 buf_size++;
@@ -216,26 +234,30 @@ command_t parse_simple_command(char** c, int* err)
     
 command_t parse_root_command(char** c, char isTopLevel, int* err)
 {
-    command_t link, next;
-    command_t cmd = parse_simple_command(c, err);
-    if (!cmd) {
-        if (**c) return error_ret(err);
-        return NULL;
-    }
-    
     stack_t oprd = stack_init();
-    //stack_t optr = stack_init();
+    stack_t optr = stack_init();
     
+    skipwhitespace(c);
+    command_t cmd = parse_simple_command(c, err);
+    
+    if (!cmd) {
+        if (**c == '(') {
+            (*c)++;
+            cmd = allocate_command();
+            cmd->type = SUBSHELL_COMMAND;
+            cmd->u.subshell_command = parse_root_command(c, 0, err);
+            if (!cmd->u.subshell_command) return error_ret(err);
+        }
+        else if (**c) return error_ret(err);
+        else return NULL;
+    }
     stack_push(oprd, cmd);
     
     for (;;) {
         char ch = **c;
-        if (isTopLevel && (!ch || ch == '\n')) return cmd;
-        if (isTopLevel && ch == ')') return error_ret(err);
-        if (!isTopLevel && ch == ')') return cmd;
-        if (!isTopLevel && (!ch || ch == '\n')) return error_ret(err);
         
-        link = allocate_command();
+        //Determine operator (or break or error)
+        command_t link = allocate_command();
         if (ch == '&') {
             (*c)++;
             if (*(*c)++ != '&') return error_ret(err);
@@ -256,28 +278,67 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
             link->type = SEQUENCE_COMMAND;
         }
         else if (ch == '\n') {
-            if (!isTopLevel) return error_ret(err);
             (*c)++;
             skipspace(c);
-            if (**c == '\n')
+            if (!**c || **c == '\n') {
+                if (!isTopLevel) return error_ret(err);
+                break;
+            }
             link->type = SEQUENCE_COMMAND;
+        }
+        else if (ch == ')') {
+            if (isTopLevel) return error_ret(err);
+            (*c)++;
+            skipspace(c);
+            break;
+        }
+        else if (!ch) {
+            if (!isTopLevel) return error_ret(err);
+            break;
         }
         else return error_ret(err);
         
-        next = parse_simple_command(c, err);
+        //Keep popping until link can be placed in stack
+        while (stack_count(optr) != 0 && !precedes((command_t)stack_top, link)) {
+            command_t t = (command_t)stack_pop(optr);
+            if (stack_count(oprd) < 2) error(1, 0, "Shit happened");
+            t->u.command[1] = (command_t)stack_pop(oprd);
+            t->u.command[0] = (command_t)stack_pop(oprd);
+            stack_push(oprd, t);
+        }
+        stack_push(optr, link);
+        
+        //Pull next operand
+        skipwhitespace(c);
+        command_t next = parse_simple_command(c, err);
         if (!next) {
             if (**c == '(') {
                 (*c)++;
-                next = parse_root_command(c, 0, err);
-                if (err) return NULL;
-                if (!next) return error_ret(err);
+                next = allocate_command();
+                next->type = SUBSHELL_COMMAND;
+                next->u.subshell_command = parse_root_command(c, 0, err);
+                if (!next->u.subshell_command) return error_ret(err);
             }
             else return error_ret(err);
         }
-        link->u.command[0] = cmd;
-        link->u.command[1] = next;
-        cmd = link;
+        stack_push(oprd, next);
     }
+    
+    //Consolidate all operands and operators
+    while (stack_count(optr) != 0 && c) {
+        command_t t = (command_t)stack_pop(optr);
+        if (stack_count(oprd) < 2) error(1, 0, "Crap happened");
+        t->u.command[1] = (command_t)stack_pop(oprd);
+        t->u.command[0] = (command_t)stack_pop(oprd);
+        stack_push(oprd, t);
+    }
+    if (stack_count(optr) != 0 || stack_count(oprd) != 1) return error_ret(err);
+    
+    cmd = stack_pop(oprd);
+    
+    stack_free(oprd);
+    stack_free(optr);
+    
     return cmd;
 }
 
