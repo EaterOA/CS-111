@@ -86,6 +86,24 @@ char precedes(command_t a, command_t b)
     return 0;
 }
 
+size_t parse_word(char** c, char* buf, size_t* buf_size, size_t* max_size)
+{
+    size_t read = 0;
+    skipspace(c);
+    while (is_valid_token(**c))
+    {
+        if (*buf_size == *max_size)
+            buf = (char*)checked_grow_alloc(buf, max_size);
+
+        buf[*buf_size] = (**c);
+        read++;
+        (*buf_size)++;
+        (*c)++;
+    }
+
+    return read;
+}
+
 command_t parse_simple_command(char** c, int* err)
 {
     skipspace(c);
@@ -97,63 +115,32 @@ command_t parse_simple_command(char** c, int* err)
 
     int num = 0;
     size_t buf_size = 0, max_size = 128;
-    size_t in_buf_size = 0, out_buf_size = 0;
+    size_t in_buf_size = 0, in_max_size = 32;
+    size_t out_buf_size = 0, out_max_size = 32;
     char* buf = (char*)checked_malloc(max_size * sizeof(char));
-    char* in_buf = (char*)checked_malloc(max_size * sizeof(char));
-    char* out_buf = (char*)checked_malloc(max_size * sizeof(char));
+    char* in_buf = (char*)checked_malloc(in_max_size * sizeof(char));
+    char* out_buf = (char*)checked_malloc(out_max_size * sizeof(char));
 
 
     for (;;)
     {
-        if (buf_size == max_size) 
-            buf = (char*)checked_grow_alloc(buf, &max_size);	
-        char ch = **c;
-
-        if(is_valid_token(ch))
-        {
-            buf[buf_size] = ch;
-            buf_size++;
-            (*c)++;          
-        }
-        else if (ch == ' ')
-        {
+        size_t len = parse_word(c, buf, &buf_size, &max_size);
+        if (len > 0) {
             buf[buf_size] = '\0';
             buf_size++;
-            skipspace(c);
             num++;  
+        }
+        
+        char ch = **c;
+        if (ch == ' ') {
+            skipspace(c);
         }
         else if (ch == '<')
         {
-            if(buf[buf_size-1] != '\0')
-            {
-                buf[buf_size] = '\0';
-                buf_size++;
-                num++;
-            }
+            if (buf_size == 0) error_ret(err);
             (*c)++;
-            skipspace(c);
-            while((**c) != ' ' && (**c))
-            {
-                if (in_buf_size == max_size) 
-                    in_buf = (char*)checked_grow_alloc(in_buf, &max_size);
-
-                if(is_valid_token((**c)))
-                {
-                    in_buf[in_buf_size] = (**c);
-                    in_buf_size++; 
-                    (*c)++;
-                }
-                else if((**c) == '>')
-                    break;
-                else
-                {    
-             	    if((**c) == '|' || (**c) == '&' || (**c) == '(' ||
-                        (**c) == ')' || (**c)  == ';' || (**c) == '\n')
-                        break;
-                    else
-                        return error_ret(err);
-                }
-            }
+            size_t read = parse_word(c, in_buf, &in_buf_size, &in_max_size);
+            if (read == 0) error_ret(err);
             in_buf[in_buf_size] = '\0';
             in_buf_size++;
             com->input = in_buf;
@@ -161,56 +148,16 @@ command_t parse_simple_command(char** c, int* err)
         }
         else if (ch == '>')
         {
-            if(buf[buf_size-1] != '\0')
-            {
-                buf[buf_size] = '\0';
-                buf_size++;
-                num++;
-            }
+            if (buf_size == 0) error_ret(err);
             (*c)++;
-            skipspace(c);
-            while((**c) != ' ' && (**c))
-            {
-                if (out_buf_size == max_size) 
-                    out_buf = (char*)checked_grow_alloc(out_buf, &max_size);
- 
-                if(is_valid_token((**c)))
-                {
-                    out_buf[out_buf_size] = (**c);
-                    out_buf_size++; 
-                    (*c)++;
-                }
-                else
-                {
-                    if((**c) == '|' || (**c) == '&' || (**c) == '(' ||
-                        (**c) == ')' || (**c) == ';' || (**c) == '\n')
-                        break;
-                    else
-                        return error_ret(err);
-                }
-            }
+            size_t read = parse_word(c, out_buf, &out_buf_size, &out_max_size);
+            if (read == 0) error_ret(err);
             out_buf[out_buf_size] = '\0';
             out_buf_size++;
             com->output = out_buf;
             skipspace(c);
         }
-        else if (!ch)
-        {
-            num++;
-            break;
-        }
-        else
-        {
-            if(ch == '|' || ch == '&' || ch == '(' ||
-                ch == ')' || ch == ';' || ch == '\n' || 
-		!ch)
-            {
-                num++;
-                break;
-            }
-            else
-                return error_ret(err);
-        }
+        else break;
     }
 
     if(buf_size == 0)
@@ -238,9 +185,11 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
     stack_t oprd = stack_init();
     stack_t optr = stack_init();
     
+    //Initialize first found command
     skipwhitespace(c);
+    if (!**c) return NULL;
     command_t cmd = parse_simple_command(c, err);
-    
+    if (*err) return error_ret(err);
     if (!cmd) {
         if (**c == '(') {
             (*c)++;
@@ -249,8 +198,7 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
             cmd->u.subshell_command = parse_root_command(c, 0, err);
             if (!cmd->u.subshell_command) return error_ret(err);
         }
-        else if (**c) return error_ret(err);
-        else return NULL;
+        else return error_ret(err);
     }
     stack_push(oprd, cmd);
     
@@ -312,6 +260,7 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
         //Pull next operand
         skipwhitespace(c);
         command_t next = parse_simple_command(c, err);
+        if (*err) return error_ret(err);
         if (!next) {
             if (**c == '(') {
                 (*c)++;
