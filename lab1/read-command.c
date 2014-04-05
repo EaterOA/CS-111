@@ -68,9 +68,19 @@ void skipspace(char** c)
     while (**c == ' ') (*c)++;
 }
 
+void skipcomments(char** c)
+{
+    if (**c == '#')
+        while (**c && **c != '\n')
+            (*c)++;
+}
+
 void skipwhitespace(char** c)
 {
-    while (**c == ' ' || **c == '\n') (*c)++;
+    while (**c == ' ' || **c == '\n' || **c == '#') {
+        skipcomments(c);
+        (*c)++;
+    }
 }
 
 char precedes(command_t a, command_t b)
@@ -107,6 +117,7 @@ size_t parse_word(char** c, char* buf, size_t* buf_size, size_t* max_size)
 command_t parse_simple_command(char** c, int* err)
 {
     skipspace(c);
+    skipcomments(c);
 
     command_t com = allocate_command();
     com->type = SIMPLE_COMMAND;
@@ -203,6 +214,7 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
     stack_push(oprd, cmd);
     
     for (;;) {
+        skipcomments(c);
         char ch = **c;
         
         //Determine operator (or break or error)
@@ -229,6 +241,7 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
         else if (ch == '\n') {
             (*c)++;
             skipspace(c);
+            skipcomments(c);
             if (!**c || **c == '\n') {
                 if (!isTopLevel) return error_ret(err);
                 break;
