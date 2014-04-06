@@ -1,0 +1,3 @@
+#! /bin/bash
+
+export PATH=/usr/local/cs/bin:$PATH

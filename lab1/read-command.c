@@ -327,15 +327,27 @@ make_command_stream (int (*get_next_byte) (void *),
     }
     
     //Construct nodes from each root command
-    char* ptr = buf;
+    char* ptr = buf, *marker;
     int err = 0;
     cs->head = allocate_command_node();
     cs->head->command = parse_root_command(&ptr, 1, &err);
-    if (!cs->head->command) error(1, 0, "line xx: syntax error encountered");;
+    if (err) {
+        int line = 1;
+        for (marker = buf; marker != ptr; marker++)
+            line += *marker == '\n';
+        error(1, 0, "line %d: syntax error encountered", line);
+    }
+    if (!cs->head->command)
+        error(1, 0, "script contains no commands");
     command_node_t curNode = cs->head;
     while (1) {
         command_t cmd = parse_root_command(&ptr, 1, &err);
-        if (err) error(1, 0, "line xx: syntax error encountered");
+        if (err) {
+            int line = 1;
+            for (marker = buf; marker != ptr; marker++)
+                line += *marker == '\n';
+            error(1, 0, "line %d: syntax error encountered", line);
+        }
         if (!cmd) break;
         curNode->next = allocate_command_node();
         curNode->next->command = cmd;
