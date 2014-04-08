@@ -335,7 +335,8 @@ make_command_stream (int (*get_next_byte) (void *),
         int line = 1;
         for (marker = buf; marker != ptr; marker++)
             line += *marker == '\n';
-        error(1, 0, "line %d: syntax error encountered", line);
+        fprintf(stderr, "%d: syntax error encountered\n", line);
+        exit(1);
     }
     if (!cs->head->command)
         error(1, 0, "script contains no commands");
@@ -346,7 +347,8 @@ make_command_stream (int (*get_next_byte) (void *),
             int line = 1;
             for (marker = buf; marker != ptr; marker++)
                 line += *marker == '\n';
-            error(1, 0, "line %d: syntax error encountered", line);
+            fprintf(stderr, "%d: syntax error encountered\n", line);
+            exit(1);
         }
         if (!cmd) break;
         curNode->next = allocate_command_node();
