@@ -5,6 +5,7 @@
 #include <error.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/wait.h>
 
 int
 command_status (command_t c)
@@ -12,19 +13,25 @@ command_status (command_t c)
     return c->status;
 }
 
-void fexecvp(char** word)
+int fexecvp(char** word)
 {
     int p = fork();
+    int status;
     if (p == 0)
         execvp(word[0], word);
+    if (p > 0)
+        if (waitpid(p, &status, 0) < 0)
+            error(1,0, "Unable to wait for pid %d", p);
     if (p < 0)
         error(1,0, "Unable to fork");
+    return status;
 }
 
 bool execute_node(command_t c)
 {
     int in, out;
     int in_copy, out_copy;
+    bool success = 0;
 
     if (c->type == SIMPLE_COMMAND) {
         if (c->input) {
@@ -43,7 +50,7 @@ bool execute_node(command_t c)
             if (dup2(out, 1) < 0)
                 error(1,0, "Cannot dup2 %s to stdout!", c->output);
         }
-        fexecvp(c->u.word);
+        success = (fexecvp(c->u.word) == 0);
         if (c->input) {
             close(in);
             dup2(in_copy, 0);
@@ -55,7 +62,7 @@ bool execute_node(command_t c)
             close(out_copy);
         }
     }
-    return false;
+    return success;
 }
 
 void
