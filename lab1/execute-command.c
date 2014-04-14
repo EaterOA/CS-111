@@ -2,24 +2,66 @@
 
 #include "command.h"
 #include "command-internals.h"
-
 #include <error.h>
-
-/* FIXME: You may need to add #include directives, macro definitions,
-   static function definitions, etc.  */
+#include <unistd.h>
+#include <fcntl.h>
 
 int
 command_status (command_t c)
 {
-  return c->status;
+    return c->status;
+}
+
+void fexecvp(char** word)
+{
+    int p = fork();
+    if (p == 0)
+        execvp(word[0], word);
+    if (p < 0)
+        error(1,0, "Unable to fork");
+}
+
+bool execute_node(command_t c)
+{
+    int in, out;
+    int in_copy, out_copy;
+
+    if (c->type == SIMPLE_COMMAND) {
+        if (c->input) {
+            if ((in_copy = dup(0)) < 0)
+                error(1,0, "Cannot dup input!");
+            if ((in = open(c->input, O_RDONLY)) < 0)
+                error(1,0, "Cannot open %s!", c->input);
+            if (dup2(in, 0) < 0)
+                error(1,0, "Cannot dup2 %s to stdin!", c->input);
+        }
+        if (c->output) {
+            if ((out_copy = dup(1)) < 0)
+                error(1,0, "Cannot dup output!");
+            if ((out = open(c->output, O_WRONLY|O_TRUNC|O_CREAT, 0644)) < 0)
+                error(1, 0, "Cannot open %s!", c->output);
+            if (dup2(out, 1) < 0)
+                error(1,0, "Cannot dup2 %s to stdout!", c->output);
+        }
+        fexecvp(c->u.word);
+        if (c->input) {
+            close(in);
+            dup2(in_copy, 0);
+            close(in_copy); 
+        }
+        if (c->output) {
+            close(out);
+            dup2(out_copy, 1);
+            close(out_copy);
+        }
+    }
+    return false;
 }
 
 void
 execute_command (command_t c, bool time_travel)
 {
-  /* FIXME: Replace this with your implementation.  You may need to
-     add auxiliary functions and otherwise modify the source code.
-     You can also use external functions defined in the GNU C Library.  */
-  c->status = (int)time_travel; //Placeholder, remove later
-  error (1, 0, "command execution not yet implemented");
+    if (!time_travel) {
+        execute_node(c);
+    }
 }
