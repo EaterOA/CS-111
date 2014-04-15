@@ -13,54 +13,41 @@ command_status (command_t c)
     return c->status;
 }
 
-int fexecvp(char** word)
+bool fdwexecvp(char** word, char* input, char* output)
 {
-    int p = fork();
+    int fd_in, fd_out;
     int status;
-    if (p == 0)
+    int p = fork();
+    if (p == 0) {
+        if (input) {
+            if ((fd_in = open(input, O_RDONLY)) < 0)
+                error(1,0,"Unable to open %s as input", input);
+            if (dup2(fd_in, 0) < 0)
+                error(1,0,"Unable to dup2 %s as stdin", input);
+        }
+        if (output) {
+            if ((fd_out = open(output, O_WRONLY|O_TRUNC|O_CREAT, 0644)) < 0)
+                error(1, 0, "Unable to open %s as output", output);
+            if (dup2(fd_out, 1) < 0)
+                error(1,0,"Unable to dup2 %s to stdout", output);
+        }
         execvp(word[0], word);
+        error(1,0,"Unable to execvp %s", word[0]);
+    }
     if (p > 0)
         if (waitpid(p, &status, 0) < 0)
             error(1,0, "Unable to wait for pid %d", p);
     if (p < 0)
         error(1,0, "Unable to fork");
-    return status;
+    return WEXITSTATUS(status) == 0;
 }
 
 bool execute_node(command_t c)
 {
-    int in, out;
-    int in_copy, out_copy;
     bool success = 0;
 
     if (c->type == SIMPLE_COMMAND) {
-        if (c->input) {
-            if ((in_copy = dup(0)) < 0)
-                error(1,0, "Cannot dup input!");
-            if ((in = open(c->input, O_RDONLY)) < 0)
-                error(1,0, "Cannot open %s!", c->input);
-            if (dup2(in, 0) < 0)
-                error(1,0, "Cannot dup2 %s to stdin!", c->input);
-        }
-        if (c->output) {
-            if ((out_copy = dup(1)) < 0)
-                error(1,0, "Cannot dup output!");
-            if ((out = open(c->output, O_WRONLY|O_TRUNC|O_CREAT, 0644)) < 0)
-                error(1, 0, "Cannot open %s!", c->output);
-            if (dup2(out, 1) < 0)
-                error(1,0, "Cannot dup2 %s to stdout!", c->output);
-        }
-        success = (fexecvp(c->u.word) == 0);
-        if (c->input) {
-            close(in);
-            dup2(in_copy, 0);
-            close(in_copy); 
-        }
-        if (c->output) {
-            close(out);
-            dup2(out_copy, 1);
-            close(out_copy);
-        }
+        success = fdwexecvp(c->u.word, c->input, c->output);
     }
     return success;
 }
