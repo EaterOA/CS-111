@@ -46,7 +46,8 @@ int execute_node(command_t c)
 {
     int status = 0;
 
-    if (c->type == SIMPLE_COMMAND) {
+    if(c->type == SIMPLE_COMMAND)
+    {
         status = fdwexecvp(c->u.word, c->input, c->output);
     }
     else if(c->type == AND_COMMAND)
@@ -72,25 +73,26 @@ int execute_node(command_t c)
     }
     else if(c->type == PIPE_COMMAND)
     {
-        int in_cpy, out_cpy;
-        int fd[2];
-        in_cpy = dup(0);
-        out_cpy = dup(1);
-        pipe(fd);
+        int in_cpy, out_cpy, fd[2];
+        if ((in_cpy = dup(0)) < 0) error(1,0,"Unable to dup 0");
+        if ((out_cpy = dup(1)) < 0) error(1,0,"Unable to dup 1");
+        if (pipe(fd) < 0) error(1,0,"Unable to create pipe");
 
-        dup2(fd[1], 1);
+        if (dup2(fd[1], 1) < 0) error(1,0,"Unable to dup2");
         execute_node(c->u.command[0]);
-        dup2(fd[0], 0);
-
-        dup2(out_cpy, 1);
-        status = execute_node(c->u.command[1]);
-
-        dup2(in_cpy, 0);
-        
-        close(fd[0]);
+        if (dup2(out_cpy, 1) < 0) error(1,0,"Unable to dup2");
         close(fd[1]);
         close(out_cpy);
+
+        if (dup2(fd[0], 0) < 0) error(1,0,"Unable to dup2");
+        status = execute_node(c->u.command[1]);
+        if (dup2(in_cpy, 0) < 0) error(1,0,"Unable to dup2");
+        close(fd[0]);
         close(in_cpy);
+    }
+    else if(c->type == SUBSHELL_COMMAND)
+    {
+        status = execute_node(c->u.subshell_command);
     }
     
     return status;
