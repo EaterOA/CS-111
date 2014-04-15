@@ -13,7 +13,7 @@ command_status (command_t c)
     return c->status;
 }
 
-bool fdwexecvp(char** word, char* input, char* output)
+int fdwexecvp(char** word, char* input, char* output)
 {
     int fd_in, fd_out;
     int status;
@@ -39,17 +39,61 @@ bool fdwexecvp(char** word, char* input, char* output)
             error(1,0, "Unable to wait for pid %d", p);
     if (p < 0)
         error(1,0, "Unable to fork");
-    return WEXITSTATUS(status) == 0;
+    return WEXITSTATUS(status);
 }
 
-bool execute_node(command_t c)
+int execute_node(command_t c)
 {
-    bool success = 0;
+    int status = 0;
 
     if (c->type == SIMPLE_COMMAND) {
-        success = fdwexecvp(c->u.word, c->input, c->output);
+        status = fdwexecvp(c->u.word, c->input, c->output);
     }
-    return success;
+    else if(c->type == AND_COMMAND)
+    {
+        int c1 = (execute_node(c->u.command[0]));
+        if(!c1)
+            status = (execute_node(c->u.command[1]));
+        else
+            status = c1;
+    }
+    else if(c->type == OR_COMMAND)
+    {
+        int c1 = (execute_node(c->u.command[0]));
+        if(c1)
+            status = (execute_node(c->u.command[1]));
+        else
+            status = c1;
+    }
+    else if(c->type == SEQUENCE_COMMAND)
+    {
+        execute_node(c->u.command[0]);
+        status = execute_node(c->u.command[1]);
+    }
+    else if(c->type == PIPE_COMMAND)
+    {
+        int in_cpy, out_cpy;
+        int fd[2];
+        in_cpy = dup(0);
+        out_cpy = dup(1);
+        pipe(fd);
+
+        dup2(fd[1], 1);
+        execute_node(c->u.command[0]);
+        dup2(fd[0], 0);
+
+        dup2(out_cpy, 1);
+        status = execute_node(c->u.command[1]);
+
+        dup2(in_cpy, 0);
+        
+        close(fd[0]);
+        close(fd[1]);
+        close(out_cpy);
+        close(in_cpy);
+    }
+    
+    return status;
 }
 
 void
