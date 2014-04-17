@@ -13,26 +13,36 @@ command_status (command_t c)
     return c->status;
 }
 
-int fdwexecvp(char** word, char* input, char* output)
+int execute_node(command_t c);
+
+int fdwexec(command_t c)
 {
     int fd_in, fd_out;
     int status;
     int p = fork();
     if (p == 0) {
-        if (input) {
-            if ((fd_in = open(input, O_RDONLY)) < 0)
-                error(1,0,"Unable to open %s as input", input);
+        if (c->input) {
+            if ((fd_in = open(c->input, O_RDONLY)) < 0)
+                error(1,0,"Unable to open %s as input", c->input);
             if (dup2(fd_in, 0) < 0)
-                error(1,0,"Unable to dup2 %s as stdin", input);
+                error(1,0,"Unable to dup2 %s as stdin", c->input);
         }
-        if (output) {
-            if ((fd_out = open(output, O_WRONLY|O_TRUNC|O_CREAT, 0644)) < 0)
-                error(1, 0, "Unable to open %s as output", output);
+        if (c->output) {
+            if ((fd_out = open(c->output, O_WRONLY|O_TRUNC|O_CREAT, 0644)) < 0)
+                error(1, 0, "Unable to open %s as output", c->output);
             if (dup2(fd_out, 1) < 0)
-                error(1,0,"Unable to dup2 %s to stdout", output);
+                error(1,0,"Unable to dup2 %s to stdout", c->output);
         }
-        execvp(word[0], word);
-        error(1,0,"Unable to execvp %s", word[0]);
+        if (c->type == SIMPLE_COMMAND) {
+            execvp(c->u.word[0], c->u.word);
+            error(1,0,"Unable to execvp %s", c->u.word[0]);
+        }
+        else if (c->type == SUBSHELL_COMMAND) {
+            status = execute_node(c->u.subshell_command);
+            if (c->input) close(fd_in);
+            if (c->output) close(fd_out);
+            _exit(status);
+        }
     }
     if (p > 0)
         if (waitpid(p, &status, 0) < 0)
@@ -46,7 +56,7 @@ int execute_node(command_t c)
 {
     if(c->type == SIMPLE_COMMAND)
     {
-        c->status = fdwexecvp(c->u.word, c->input, c->output);
+        c->status = fdwexec(c);
     }
     else if(c->type == AND_COMMAND)
     {
@@ -100,7 +110,7 @@ int execute_node(command_t c)
     }
     else if(c->type == SUBSHELL_COMMAND)
     {
-        c->status = execute_node(c->u.subshell_command);
+        c->status = fdwexec(c);
     }
     
     return c->status;

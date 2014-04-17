@@ -110,8 +110,43 @@ size_t parse_word(char** c, char* buf, size_t* buf_size, size_t* max_size)
         (*buf_size)++;
         (*c)++;
     }
+    if (*buf_size == *max_size)
+        buf = (char*)checked_grow_alloc(buf, max_size);
+    buf[*buf_size] = '\0';
+    (*buf_size)++;
 
     return read;
+}
+
+command_t parse_redirects(char** c, command_t cmd)
+{
+    size_t in_buf_size = 0, in_max_size = 32;
+    size_t out_buf_size = 0, out_max_size = 32;
+    char* in_buf = (char*)checked_malloc(in_max_size * sizeof(char));
+    char* out_buf = (char*)checked_malloc(out_max_size * sizeof(char));
+    for (;;) {
+        skipspace(c);
+        char ch = **c;
+        if (ch == '<') {
+            (*c)++;
+            in_buf_size = 0;
+            size_t read = parse_word(c, in_buf, &in_buf_size, &in_max_size);
+            if (read == 0) return NULL;
+            cmd->input = in_buf;
+        }
+        else if (ch == '>')
+        {
+            (*c)++;
+            out_buf_size = 0;
+            size_t read = parse_word(c, out_buf, &out_buf_size, &out_max_size);
+            if (read == 0) return NULL;
+            cmd->output = out_buf;
+        }
+        else break;
+    }
+    if (!in_buf_size) free(in_buf);
+    if (!out_buf_size) free(out_buf);
+    return cmd;
 }
 
 command_t parse_simple_command(char** c, int* err)
@@ -121,60 +156,30 @@ command_t parse_simple_command(char** c, int* err)
 
     command_t com = allocate_command();
     com->type = SIMPLE_COMMAND;
-    com->input = NULL;
-    com->output = NULL;   
 
     int num = 0;
     size_t buf_size = 0, max_size = 128;
-    size_t in_buf_size = 0, in_max_size = 32;
-    size_t out_buf_size = 0, out_max_size = 32;
     char* buf = (char*)checked_malloc(max_size * sizeof(char));
-    char* in_buf = (char*)checked_malloc(in_max_size * sizeof(char));
-    char* out_buf = (char*)checked_malloc(out_max_size * sizeof(char));
-
 
     for (;;)
     {
         size_t len = parse_word(c, buf, &buf_size, &max_size);
         if (len > 0) {
-            buf[buf_size] = '\0';
-            buf_size++;
             num++;  
         }
         
-        char ch = **c;
-        if (ch == ' ') {
-            skipspace(c);
-        }
-        else if (ch == '<')
-        {
-            if (buf_size == 0) error_ret(err);
-            (*c)++;
-            size_t read = parse_word(c, in_buf, &in_buf_size, &in_max_size);
-            if (read == 0) error_ret(err);
-            in_buf[in_buf_size] = '\0';
-            in_buf_size++;
-            com->input = in_buf;
-            skipspace(c);
-        }
-        else if (ch == '>')
-        {
-            if (buf_size == 0) error_ret(err);
-            (*c)++;
-            size_t read = parse_word(c, out_buf, &out_buf_size, &out_max_size);
-            if (read == 0) error_ret(err);
-            out_buf[out_buf_size] = '\0';
-            out_buf_size++;
-            com->output = out_buf;
-            skipspace(c);
+        else if (**c == '<' || **c == '>') {
+            if (buf_size <= 1) error_ret(err);
+            if (!parse_redirects(c, com)) error_ret(err);
         }
         else break;
     }
 
-    if(buf_size == 0)
+    if(buf_size <= 1) {
+        free(buf);
         return NULL;
+    }
 
-    buf[buf_size] = '\0';
     com->u.word = (char**)checked_malloc((num+1) * sizeof(char*));
     char* curr = buf;
     com->u.word[0] = curr;
@@ -208,6 +213,7 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
             cmd->type = SUBSHELL_COMMAND;
             cmd->u.subshell_command = parse_root_command(c, 0, err);
             if (!cmd->u.subshell_command) return error_ret(err);
+            if (!parse_redirects(c, cmd)) return error_ret(err);
         }
         else return error_ret(err);
     }
@@ -281,6 +287,7 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
                 next->type = SUBSHELL_COMMAND;
                 next->u.subshell_command = parse_root_command(c, 0, err);
                 if (!next->u.subshell_command) return error_ret(err);
+                if (!parse_redirects(c, next)) return error_ret(err);
             }
             else return error_ret(err);
         }
