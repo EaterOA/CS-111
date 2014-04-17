@@ -73,22 +73,32 @@ int execute_node(command_t c)
     }
     else if(c->type == PIPE_COMMAND)
     {
-        int in_cpy, out_cpy, fd[2];
-        if ((in_cpy = dup(0)) < 0) error(1,0,"Unable to dup 0");
-        if ((out_cpy = dup(1)) < 0) error(1,0,"Unable to dup 1");
+        int p1, p2, s, fd[2];
         if (pipe(fd) < 0) error(1,0,"Unable to create pipe");
 
-        if (dup2(fd[1], 1) < 0) error(1,0,"Unable to dup2");
-        execute_node(c->u.command[0]);
-        if (dup2(out_cpy, 1) < 0) error(1,0,"Unable to dup2");
+        p1 = fork();
+        if (p1 == 0) {
+            close(fd[0]);
+            if (dup2(fd[1], 1) < 0) error(1,0,"Unable to dup2");
+            s = execute_node(c->u.command[0]);
+            close(fd[1]);
+            _exit(s);
+        }
+        else if (p1 < 0) error(1,0,"Unable to fork a process for pipe");
+        p2 = fork();
+        if (p2 == 0) {
+            close(fd[1]);
+            if (dup2(fd[0], 0) < 0) error(1,0,"Unable to dup2");
+            s = execute_node(c->u.command[1]);
+            close(fd[0]);
+            _exit(s);
+        }
+        else if (p2 < 0) error(1,0,"Unable to fork a process for pipe");
         close(fd[1]);
-        close(out_cpy);
-
-        if (dup2(fd[0], 0) < 0) error(1,0,"Unable to dup2");
-        status = execute_node(c->u.command[1]);
-        if (dup2(in_cpy, 0) < 0) error(1,0,"Unable to dup2");
         close(fd[0]);
-        close(in_cpy);
+        waitpid(p1, &s, 0);
+        waitpid(p2, &s, 0);
+        status = WEXITSTATUS(s);
     }
     else if(c->type == SUBSHELL_COMMAND)
     {
