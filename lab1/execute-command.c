@@ -44,32 +44,30 @@ int fdwexecvp(char** word, char* input, char* output)
 
 int execute_node(command_t c)
 {
-    int status = 0;
-
     if(c->type == SIMPLE_COMMAND)
     {
-        status = fdwexecvp(c->u.word, c->input, c->output);
+        c->status = fdwexecvp(c->u.word, c->input, c->output);
     }
     else if(c->type == AND_COMMAND)
     {
-        int c1 = (execute_node(c->u.command[0]));
-        if(!c1)
-            status = (execute_node(c->u.command[1]));
+        int s = execute_node(c->u.command[0]);
+        if(!s)
+            c->status = execute_node(c->u.command[1]);
         else
-            status = c1;
+            c->status = s;
     }
     else if(c->type == OR_COMMAND)
     {
-        int c1 = (execute_node(c->u.command[0]));
-        if(c1)
-            status = (execute_node(c->u.command[1]));
+        int s = (execute_node(c->u.command[0]));
+        if(s)
+            c->status = (execute_node(c->u.command[1]));
         else
-            status = c1;
+            c->status = s;
     }
     else if(c->type == SEQUENCE_COMMAND)
     {
         execute_node(c->u.command[0]);
-        status = execute_node(c->u.command[1]);
+        c->status = execute_node(c->u.command[1]);
     }
     else if(c->type == PIPE_COMMAND)
     {
@@ -98,14 +96,14 @@ int execute_node(command_t c)
         close(fd[0]);
         waitpid(p1, &s, 0);
         waitpid(p2, &s, 0);
-        status = WEXITSTATUS(s);
+        c->status = WEXITSTATUS(s);
     }
     else if(c->type == SUBSHELL_COMMAND)
     {
-        status = execute_node(c->u.subshell_command);
+        c->status = execute_node(c->u.subshell_command);
     }
     
-    return status;
+    return c->status;
 }
 
 void
