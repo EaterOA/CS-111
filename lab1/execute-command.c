@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/wait.h>
+#include <string.h>
 
 int
 command_status (command_t c)
@@ -34,7 +35,10 @@ int fdwexec(command_t c)
                 error(1,0,"Unable to dup2 %s to stdout", c->output);
         }
         if (c->type == SIMPLE_COMMAND) {
-            execvp(c->u.word[0], c->u.word);
+            if (strcmp(c->u.word[0], "exec"))
+                execvp(c->u.word[0], c->u.word);
+            else
+                execvp(c->u.word[1], c->u.word+1);
             error(1,0,"Unable to execvp %s", c->u.word[0]);
         }
         else if (c->type == SUBSHELL_COMMAND) {
