@@ -67,6 +67,39 @@ void darray_swap_back(darray_t a, size_t idx)
     darray_set(a, idx, temp);
 }
 
+void* darray_remove_unordered(darray_t a, size_t idx)
+{
+    if (!a) error(1, 0, "Null darray point given to darray remove unordered");
+    if (a->count <= idx) error(1,0,"Remove unordered idx out of bounds");
+    darray_swap_back(a, idx);
+    return darray_pop(a);
+}
+
+void* darray_remove(darray_t a, size_t idx)
+{
+    if (!a) error(1, 0, "Null darray point given to darray remove");
+    if (a->count <= idx) error(1,0,"Remove idx out of bounds");
+    void* element = darray_get(a, idx);
+    a->count--;
+    size_t i = idx;
+    for (; i < a->count; i++)
+        a->data[i] = a->data[i+1];
+    return element;
+}
+
+void darray_insert(darray_t a, size_t idx, void* element)
+{
+    if (!a) error(1, 0, "Null darray point given to darray remove");
+    if (a->count < idx) error(1,0,"Remove idx out of bounds");
+    if (a->count == a->max_count)
+        a->data = (void**)checked_grow_alloc(a->data, &a->max_count);
+    size_t i = idx;
+    for (; i < a->count; i++)
+        a->data[i+1] = a->data[i];
+    a->count++;
+    a->data[idx] = element;
+}
+
 void** darray_extract(darray_t a)
 {
     if (!a) error(1, 0, "Null darray point given to darray extract");

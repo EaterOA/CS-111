@@ -7,6 +7,9 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <string.h>
+#include "darray.h"
+
+//============================ Sequential execution ============================
 
 int
 command_status (command_t c)
@@ -128,11 +131,115 @@ execute_command (command_t c, bool time_travel)
     }
 }
 
+//============================ Time travel execution ============================
+
+typedef struct graph_node* graph_node_t;
+struct graph_node
+{
+    command_t cmd;
+    darray_t readlist;  //darray of char*
+    darray_t writelist; //darray of char*
+    darray_t after;     //darray of graph_node_t
+    int pid;
+    int dep;
+};
+
+graph_node_t init_graph_node(void)
+{
+    graph_node_t node = (graph_node_t)checked_malloc(sizeof(struct graph_node));
+    node->cmd = NULL;
+    node->readlist = darray_init();
+    node->writelist = darray_init();
+    node->after = darray_init();
+    node->pid = 0;
+    node->dep = 0;
+    return node;
+}
+
+void free_graph_node(graph_node_t node)
+{
+    darray_free(node->readlist);
+    darray_free(node->writelist);
+    darray_free(node->after);
+}
+
+void construct_read_write_list(graph_node_t node)
+{
+    node->pid = 0; //PLACEHOLDER
+}
+
+void construct_dependencies(darray_t g, graph_node_t node)
+{
+    g->count = 0;   //PLACEHOLDER
+    node->pid = 0;  //PLACEHOLDER
+}
 
 void
 execute_time_travel (command_stream_t s)
 {
+    //Construct graph
+    darray_t g = darray_init(); //darray of graph_node_t
     command_t c;
     while ((c = read_command_stream (s))) {
+        graph_node_t node = init_graph_node();
+        node->cmd = c;
+        construct_read_write_list(node);
+        construct_dependencies(g, node);
+        darray_push(g, node);
+    }
+    
+    //Removing nonsources from graph
+    size_t i, j;
+    for (i = 0; i < darray_count(g);) {
+        if (((graph_node_t)darray_get(g, i))->dep > 0)
+            darray_remove_unordered(g, i);
+        else
+            i++;
+    }
+    
+    //Execute sources
+    for (i = 0; i < g->count; i++) {
+        graph_node_t node = (graph_node_t)darray_get(g, i);
+        int p = fork();
+        if (p == 0) {
+            int ret = execute_node(node->cmd);
+            _exit(ret);
+        }
+        else if (p > 0)
+            node->pid = p;
+        else if (p < 0)
+            error(1,0,"Unable to fork processes for sources");
+    }
+    
+    //Poll sources until they're done, resolve dependencies, and add more sources
+    int status;
+    for (i = 0; i < g->count;) {
+        graph_node_t node = (graph_node_t)darray_get(g, i);
+        int p = waitpid(node->pid, &status, WNOHANG);
+        if (p > 0) {
+            darray_remove_unordered(g, i);
+            for (j = 0; j < node->after->count; j++) {
+                graph_node_t next = (graph_node_t)darray_get(node->after, j);
+                next->dep--;
+                if (next->dep == 0) {
+                    p = fork();
+                    if (p == 0) {
+                        int ret = execute_node(next->cmd);
+                        _exit(ret);
+                    }
+                    else if (p > 0) {
+                        next->pid = p;
+                        darray_push(g, next);
+                    }
+                    else if (p < 0)
+                        error(1,0,"Unable to fork processes for sources");
+                }
+            }
+            free_graph_node(node);
+        }
+        else if (p == 0)
+            i++;
+        else if (p < 0)
+            error(1,0,"Unable to call waitpid on sources");
     }
 }

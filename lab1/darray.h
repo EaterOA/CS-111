@@ -20,6 +20,9 @@ void* darray_back(darray_t a);
 void* darray_get(darray_t a, size_t idx);
 void darray_set(darray_t a, size_t idx, void* element);
 void darray_swap_back(darray_t a, size_t idx);
+void* darray_remove_unordered(darray_t a, size_t idx);
+void* darray_remove(darray_t a, size_t idx);
+void darray_insert(darray_t a, size_t idx, void* element);
 void** darray_extract(darray_t a);
 size_t darray_count(darray_t a);
 
