@@ -17,19 +17,20 @@ TIMETRASH_SOURCES = \
   main.c \
   read-command.c \
   print-command.c \
-  stack.c
+  stack.c \
+  darray.c
 TIMETRASH_OBJECTS = $(subst .c,.o,$(TIMETRASH_SOURCES))
 
 DIST_SOURCES = \
-  $(TIMETRASH_SOURCES) alloc.h command.h command-internals.h stack.h Makefile \
+  $(TIMETRASH_SOURCES) alloc.h command.h command-internals.h stack.h darray.h Makefile \
   $(TESTS) check-dist README
 
 timetrash: $(TIMETRASH_OBJECTS)
 	$(CC) $(CFLAGS) -o $@ $(TIMETRASH_OBJECTS)
 
 alloc.o: alloc.h
-execute-command.o main.o print-command.o read-command.o stack.o: command.h stack.h
-execute-command.o print-command.o read-command.o stack.o: command-internals.h stack.h
+execute-command.o main.o print-command.o read-command.o stack.o: command.h stack.h darray.h
+execute-command.o print-command.o read-command.o stack.o: command-internals.h stack.h darray.h
 
 dist: $(DISTDIR).tar.gz
 

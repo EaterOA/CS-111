@@ -12,8 +12,8 @@ struct stack
     size_t max_count;
 };
 
-stack_t stack_init();
-void stack_free();
+stack_t stack_init(void);
+void stack_free(stack_t s);
 void stack_push(stack_t s, void* element);
 void* stack_pop(stack_t s);
 void* stack_top(stack_t s);

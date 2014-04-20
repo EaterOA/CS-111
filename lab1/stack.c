@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <error.h>
 
-stack_t stack_init()
+stack_t stack_init(void)
 {
     stack_t s = (stack_t)checked_malloc(sizeof(struct stack));
     s->max_count = 16;
