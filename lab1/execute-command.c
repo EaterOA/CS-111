@@ -127,3 +127,12 @@ execute_command (command_t c, bool time_travel)
         execute_node(c);
     }
 }
+
+
+void
+execute_time_travel (command_stream_t s)
+{
+    command_t c;
+    while ((c = read_command_stream (s))) {
+    }
+}
