@@ -4,7 +4,7 @@
 #include "command-internals.h"
 #include <error.h>
 #include "alloc.h"
-#include "stack.h"
+#include "darray.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -198,8 +198,8 @@ command_t parse_simple_command(char** c, int* err)
     
 command_t parse_root_command(char** c, char isTopLevel, int* err)
 {
-    stack_t oprd = stack_init();
-    stack_t optr = stack_init();
+    darray_t oprd = darray_init();
+    darray_t optr = darray_init();
     
     //Initialize first found command
     skipwhitespace(c);
@@ -217,7 +217,7 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
         }
         else return error_ret(err);
     }
-    stack_push(oprd, cmd);
+    darray_push(oprd, cmd);
     
     for (;;) {
         skipcomments(c);
@@ -266,15 +266,15 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
         }
         else return error_ret(err);
         
-        //Keep popping until link can be placed in stack
-        while (stack_count(optr) != 0 && !precedes((command_t)stack_top, link)) {
-            command_t t = (command_t)stack_pop(optr);
-            if (stack_count(oprd) < 2) error(1, 0, "Shit happened");
-            t->u.command[1] = (command_t)stack_pop(oprd);
-            t->u.command[0] = (command_t)stack_pop(oprd);
-            stack_push(oprd, t);
+        //Keep popping until link can be placed in darray
+        while (darray_count(optr) != 0 && !precedes((command_t)darray_back, link)) {
+            command_t t = (command_t)darray_pop(optr);
+            if (darray_count(oprd) < 2) error(1, 0, "Shit happened");
+            t->u.command[1] = (command_t)darray_pop(oprd);
+            t->u.command[0] = (command_t)darray_pop(oprd);
+            darray_push(oprd, t);
         }
-        stack_push(optr, link);
+        darray_push(optr, link);
         
         //Pull next operand
         skipwhitespace(c);
@@ -291,23 +291,23 @@ command_t parse_root_command(char** c, char isTopLevel, int* err)
             }
             else return error_ret(err);
         }
-        stack_push(oprd, next);
+        darray_push(oprd, next);
     }
     
     //Consolidate all operands and operators
-    while (stack_count(optr) != 0 && c) {
-        command_t t = (command_t)stack_pop(optr);
-        if (stack_count(oprd) < 2) error(1, 0, "Crap happened");
-        t->u.command[1] = (command_t)stack_pop(oprd);
-        t->u.command[0] = (command_t)stack_pop(oprd);
-        stack_push(oprd, t);
+    while (darray_count(optr) != 0 && c) {
+        command_t t = (command_t)darray_pop(optr);
+        if (darray_count(oprd) < 2) error(1, 0, "Crap happened");
+        t->u.command[1] = (command_t)darray_pop(oprd);
+        t->u.command[0] = (command_t)darray_pop(oprd);
+        darray_push(oprd, t);
     }
-    if (stack_count(optr) != 0 || stack_count(oprd) != 1) return error_ret(err);
+    if (darray_count(optr) != 0 || darray_count(oprd) != 1) return error_ret(err);
     
-    cmd = stack_pop(oprd);
+    cmd = darray_pop(oprd);
     
-    stack_free(oprd);
-    stack_free(optr);
+    darray_free(oprd);
+    darray_free(optr);
     
     return cmd;
 }

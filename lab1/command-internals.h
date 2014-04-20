@@ -21,10 +21,6 @@ struct command
   // I/O redirections, or null if none.
   char *input;
   char *output;
-  
-  // Resource measurement
-  int rss;
-  int cputime;
 
   union
   {
