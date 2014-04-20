@@ -170,8 +170,7 @@ void construct_read_write_list(graph_node_t node)
 
 void construct_dependencies(darray_t g, graph_node_t node)
 {
-    g->count = 0;   //PLACEHOLDER
-    node->pid = 0;  //PLACEHOLDER
+    node->pid = g->count;  //PLACEHOLDER
 }
 
 void
@@ -190,8 +189,9 @@ execute_time_travel (command_stream_t s)
     
     //Removing nonsources from graph
     size_t i, j;
-    for (i = 0; i < darray_count(g);) {
-        if (((graph_node_t)darray_get(g, i))->dep > 0)
+    for (i = 0; i < g->count;) {
+        graph_node_t node = (graph_node_t)darray_get(g, i);
+        if (node->dep > 0)
             darray_remove_unordered(g, i);
         else
             i++;
@@ -213,33 +213,35 @@ execute_time_travel (command_stream_t s)
     
     //Poll sources until they're done, resolve dependencies, and add more sources
     int status;
-    for (i = 0; i < g->count;) {
-        graph_node_t node = (graph_node_t)darray_get(g, i);
-        int p = waitpid(node->pid, &status, WNOHANG);
-        if (p > 0) {
-            darray_remove_unordered(g, i);
-            for (j = 0; j < node->after->count; j++) {
-                graph_node_t next = (graph_node_t)darray_get(node->after, j);
-                next->dep--;
-                if (next->dep == 0) {
-                    p = fork();
-                    if (p == 0) {
-                        int ret = execute_node(next->cmd);
-                        _exit(ret);
+    while (g->count > 0) {
+        for (i = 0; i < g->count;) {
+            graph_node_t node = (graph_node_t)darray_get(g, i);
+            int p = waitpid(node->pid, &status, WNOHANG);
+            if (p > 0) {
+                darray_remove_unordered(g, i);
+                for (j = 0; j < node->after->count; j++) {
+                    graph_node_t next = (graph_node_t)darray_get(node->after, j);
+                    next->dep--;
+                    if (next->dep == 0) {
+                        p = fork();
+                        if (p == 0) {
+                            int ret = execute_node(next->cmd);
+                            _exit(ret);
+                        }
+                        else if (p > 0) {
+                            next->pid = p;
+                            darray_push(g, next);
+                        }
+                        else if (p < 0)
+                            error(1,0,"Unable to fork processes for sources");
                     }
-                    else if (p > 0) {
-                        next->pid = p;
-                        darray_push(g, next);
-                    }
-                    else if (p < 0)
-                        error(1,0,"Unable to fork processes for sources");
                 }
+                free_graph_node(node);
             }
-            free_graph_node(node);
+            else if (p == 0)
+                i++;
+            else if (p < 0)
+                error(1,0,"Unable to call waitpid on sources");
         }
-        else if (p == 0)
-            i++;
-        else if (p < 0)
-            error(1,0,"Unable to call waitpid on sources");
     }
 }
