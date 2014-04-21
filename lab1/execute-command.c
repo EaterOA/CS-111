@@ -163,8 +163,60 @@ void free_graph_node(graph_node_t node)
     darray_free(node->after);
 }
 
+void construct_read_write_list(graph_node_t node);
+
+void copy_to_node(graph_node_t dest, command_t cmd_src)
+{
+    graph_node_t src = init_graph_node();
+    src->cmd = cmd_src;
+    construct_read_write_list(src);
+    
+    while(darray_count(src->readlist) != 0)
+    {
+        char* word = (char*)darray_pop(src->readlist);
+        darray_push(dest->readlist, word);
+    }
+    while(darray_count(src->writelist) != 0)
+    {
+        char* word = (char*)darray_pop(src->writelist);
+        darray_push(dest->writelist, word);
+    }
+}
+
 void construct_read_write_list(graph_node_t node)
 {
+    command_t c = node->cmd;
+    if(!c)
+        error(1, 0, "No command");
+    
+    else if(c->type == SIMPLE_COMMAND)
+    {
+        char** words = c->u.word + 1;
+        while(words != NULL)
+        {
+            darray_push(node->readlist, *(words));
+            words++; 
+        }
+
+        if(c->input)
+            darray_push(node->readlist, c->input);
+        if(c->output)
+            darray_push(node->writelist, c->output);
+    }
+    else if(c->type == SUBSHELL_COMMAND)
+    {
+        command_t subshell_cmd = c->u.subshell_command; 
+        copy_to_node(node, subshell_cmd);
+    }
+    else //all the other types
+    {
+        command_t c1 = c->u.command[0];
+        copy_to_node(node, c1);
+ 
+        command_t c2 = c->u.command[1];
+        copy_to_node(node, c2);
+    }
+    
     node->pid = 0; //PLACEHOLDER
 }
 
