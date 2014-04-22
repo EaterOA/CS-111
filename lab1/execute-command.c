@@ -222,7 +222,33 @@ void construct_read_write_list(graph_node_t node)
 
 void construct_dependencies(darray_t g, graph_node_t node)
 {
-    node->pid = g->count;  //PLACEHOLDER
+    size_t i;
+    for(i = 0; i < g->count; i++)
+    {
+        graph_node_t cur = darray_get(g, i);
+        size_t j;
+        for(j = 0; j < cur->readlist->count; j++)
+        {
+            size_t k;
+            for(k = 0; k < node->readlist->count; k++)
+            {
+                if(strcmp(darray_get(cur->readlist, j),
+                          darray_get(node->readlist, k)) == 0)
+                     node->dep++;
+            }
+        }
+
+        for(j = 0; j < cur->writelist->count; j++)
+        {
+            size_t k;
+            for(k = 0; k < node->readlist->count; k++)
+            {
+                if(strcmp(darray_get(cur->writelist, j),
+                          darray_get(node->readlist, k)) == 0)
+                     node->dep++;
+            }
+        }
+    }
 }
 
 void
