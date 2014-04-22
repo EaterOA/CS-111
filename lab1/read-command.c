@@ -46,6 +46,8 @@ command_t allocate_command()
     command_t cmd = (command_t)checked_malloc(sizeof(struct command));
     cmd->input = NULL;
     cmd->output = NULL;
+    cmd->rss = 0;
+    cmd->utime = 0;
     return cmd;
 }
 

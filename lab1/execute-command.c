@@ -17,26 +17,31 @@ command_status (command_t c)
     return c->status;
 }
 
-int execute_node(command_t c);
+int execute_node(command_t c, bool measure);
 
-int fdwexec(command_t c)
+void redirect(int* fd_in, int* fd_out, char* input, char* output)
+{
+    if (input) {
+        if ((*fd_in = open(input, O_RDONLY)) < 0)
+            error(1,0,"Unable to open %s as input", input);
+        if (dup2(*fd_in, 0) < 0)
+            error(1,0,"Unable to dup2 %s as stdin", input);
+    }
+    if (output) {
+        if ((*fd_out = open(output, O_WRONLY|O_TRUNC|O_CREAT, 0644)) < 0)
+            error(1, 0, "Unable to open %s as output", output);
+        if (dup2(*fd_out, 1) < 0)
+            error(1,0,"Unable to dup2 %s to stdout", output);
+    }
+}
+
+int fdwexec(command_t c, bool measure)
 {
     int fd_in, fd_out;
     int status;
     int p = fork();
     if (p == 0) {
-        if (c->input) {
-            if ((fd_in = open(c->input, O_RDONLY)) < 0)
-                error(1,0,"Unable to open %s as input", c->input);
-            if (dup2(fd_in, 0) < 0)
-                error(1,0,"Unable to dup2 %s as stdin", c->input);
-        }
-        if (c->output) {
-            if ((fd_out = open(c->output, O_WRONLY|O_TRUNC|O_CREAT, 0644)) < 0)
-                error(1, 0, "Unable to open %s as output", c->output);
-            if (dup2(fd_out, 1) < 0)
-                error(1,0,"Unable to dup2 %s to stdout", c->output);
-        }
+        redirect(&fd_in, &fd_out, c->input, c->output);
         if (c->type == SIMPLE_COMMAND) {
             if (strcmp(c->u.word[0], "exec"))
                 execvp(c->u.word[0], c->u.word);
@@ -45,7 +50,7 @@ int fdwexec(command_t c)
             error(1,0,"Unable to execvp %s", c->u.word[0]);
         }
         else if (c->type == SUBSHELL_COMMAND) {
-            status = execute_node(c->u.subshell_command);
+            status = execute_node(c->u.subshell_command, measure);
             if (c->input) close(fd_in);
             if (c->output) close(fd_out);
             _exit(status);
@@ -59,32 +64,33 @@ int fdwexec(command_t c)
     return WEXITSTATUS(status);
 }
 
-int execute_node(command_t c)
+int execute_node(command_t c, bool measure)
 {
     if(c->type == SIMPLE_COMMAND)
     {
-        c->status = fdwexec(c);
+        c->status = fdwexec(c, measure);
     }
     else if(c->type == AND_COMMAND)
     {
-        int s = execute_node(c->u.command[0]);
+        int s = execute_node(c->u.command[0], measure);
         if(!s)
-            c->status = execute_node(c->u.command[1]);
+            c->status = execute_node(c->u.command[1], measure);
         else
             c->status = s;
+        s = (int)measure; //PLACEHOLDER
     }
     else if(c->type == OR_COMMAND)
     {
-        int s = (execute_node(c->u.command[0]));
+        int s = (execute_node(c->u.command[0], measure));
         if(s)
-            c->status = (execute_node(c->u.command[1]));
+            c->status = (execute_node(c->u.command[1], measure));
         else
             c->status = s;
     }
     else if(c->type == SEQUENCE_COMMAND)
     {
-        execute_node(c->u.command[0]);
-        c->status = execute_node(c->u.command[1]);
+        execute_node(c->u.command[0], measure);
+        c->status = execute_node(c->u.command[1], measure);
     }
     else if(c->type == PIPE_COMMAND)
     {
@@ -95,7 +101,7 @@ int execute_node(command_t c)
         if (p1 == 0) {
             close(fd[0]);
             if (dup2(fd[1], 1) < 0) error(1,0,"Unable to dup2");
-            s = execute_node(c->u.command[0]);
+            s = execute_node(c->u.command[0], measure);
             close(fd[1]);
             _exit(s);
         }
@@ -104,7 +110,7 @@ int execute_node(command_t c)
         if (p2 == 0) {
             close(fd[1]);
             if (dup2(fd[0], 0) < 0) error(1,0,"Unable to dup2");
-            s = execute_node(c->u.command[1]);
+            s = execute_node(c->u.command[1], measure);
             close(fd[0]);
             _exit(s);
         }
@@ -117,18 +123,16 @@ int execute_node(command_t c)
     }
     else if(c->type == SUBSHELL_COMMAND)
     {
-        c->status = fdwexec(c);
+        c->status = fdwexec(c, measure);
     }
     
     return c->status;
 }
 
 void
-execute_command (command_t c, bool time_travel)
+execute_command (command_t c, bool measure)
 {
-    if (!time_travel) {
-        execute_node(c);
-    }
+    execute_node(c, measure);
 }
 
 //============================ Time travel execution ============================
@@ -202,7 +206,7 @@ execute_time_travel (command_stream_t s)
         graph_node_t node = (graph_node_t)darray_get(g, i);
         int p = fork();
         if (p == 0) {
-            int ret = execute_node(node->cmd);
+            int ret = execute_node(node->cmd, false);
             _exit(ret);
         }
         else if (p > 0)
@@ -225,7 +229,7 @@ execute_time_travel (command_stream_t s)
                     if (next->dep == 0) {
                         p = fork();
                         if (p == 0) {
-                            int ret = execute_node(next->cmd);
+                            int ret = execute_node(next->cmd, false);
                             _exit(ret);
                         }
                         else if (p > 0) {

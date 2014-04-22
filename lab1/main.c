@@ -28,12 +28,14 @@ main (int argc, char **argv)
   int command_number = 1;
   bool print_tree = false;
   bool time_travel = false;
+  bool measure_resource = false;
   program_name = argv[0];
 
   for (;;)
     switch (getopt (argc, argv, "pt"))
       {
       case 'p': print_tree = true; break;
+      case 'm': measure_resource = true; break;
       case 't': time_travel = true; break;
       default: usage (); break;
       case -1: goto options_exhausted;
@@ -62,7 +64,7 @@ main (int argc, char **argv)
   else if (!time_travel) {
     while ((command = read_command_stream (command_stream))) {
 	  last_command = command;
-	  execute_command (command, time_travel);
+	  execute_command (command, measure_resource);
     }
   }
   else {

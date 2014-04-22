@@ -22,6 +22,10 @@ struct command
   char *input;
   char *output;
 
+  // Resource monitoring
+  long int rss;
+  long int utime;
+
   union
   {
     // for AND_COMMAND, SEQUENCE_COMMAND, OR_COMMAND, PIPE_COMMAND:
