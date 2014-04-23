@@ -226,15 +226,16 @@ void construct_dependencies(darray_t g, graph_node_t node)
     for(i = 0; i < g->count; i++)
     {
         graph_node_t cur = darray_get(g, i);
+        int flag = 0;
         size_t j;
         for(j = 0; j < cur->readlist->count; j++)
         {
             size_t k;
-            for(k = 0; k < node->readlist->count; k++)
+            for(k = 0; k < node->writelist->count; k++)
             {
                 if(strcmp(darray_get(cur->readlist, j),
-                          darray_get(node->readlist, k)) == 0)
-                     node->dep++;
+                          darray_get(node->writelist, k)) == 0)
+                     flag = 1;
             }
         }
 
@@ -245,8 +246,19 @@ void construct_dependencies(darray_t g, graph_node_t node)
             {
                 if(strcmp(darray_get(cur->writelist, j),
                           darray_get(node->readlist, k)) == 0)
-                     node->dep++;
+                     flag = 1;
             }
+            for(k = 0; k < node->writelist->count; k++)
+            {
+                if(strcmp(darray_get(cur->writelist, j),
+                          darray_get(node->writelist, k)) == 0)
+                     flag = 1;
+            }
+        }
+        if(flag == 1)
+        {
+            node->dep++;
+            darray_push(cur->after, node);
         }
     }
 }
