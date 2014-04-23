@@ -172,8 +172,11 @@ void construct_read_write_list(graph_node_t node, command_t cmd)
         char** words = cmd->u.word + 1;
         while(*words != NULL)
         {
-            darray_push(node->readlist, *(words));
-            words++; 
+            if(**words != '-')
+            {
+                darray_push(node->readlist, *(words));
+                words++;
+            }
         }
 
         if(cmd->input)
