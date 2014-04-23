@@ -170,7 +170,7 @@ void construct_read_write_list(graph_node_t node, command_t cmd)
     else if(cmd->type == SIMPLE_COMMAND)
     {
         char** words = cmd->u.word + 1;
-        while(words != NULL)
+        while(*words != NULL)
         {
             darray_push(node->readlist, *(words));
             words++; 
