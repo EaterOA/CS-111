@@ -163,61 +163,43 @@ void free_graph_node(graph_node_t node)
     darray_free(node->after);
 }
 
-void construct_read_write_list(graph_node_t node);
-
-void copy_to_node(graph_node_t dest, command_t cmd_src)
+void construct_read_write_list(graph_node_t node, command_t cmd)
 {
-    graph_node_t src = init_graph_node();
-    src->cmd = cmd_src;
-    construct_read_write_list(src);
-    
-    while(darray_count(src->readlist) != 0)
-    {
-        char* word = (char*)darray_pop(src->readlist);
-        darray_push(dest->readlist, word);
-    }
-    while(darray_count(src->writelist) != 0)
-    {
-        char* word = (char*)darray_pop(src->writelist);
-        darray_push(dest->writelist, word);
-    }
-}
-
-void construct_read_write_list(graph_node_t node)
-{
-    command_t c = node->cmd;
-    if(!c)
+    if(!cmd)
         error(1, 0, "No command");
-    
-    else if(c->type == SIMPLE_COMMAND)
+    else if(cmd->type == SIMPLE_COMMAND)
     {
-        char** words = c->u.word + 1;
+        char** words = cmd->u.word + 1;
         while(words != NULL)
         {
             darray_push(node->readlist, *(words));
             words++; 
         }
 
-        if(c->input)
-            darray_push(node->readlist, c->input);
-        if(c->output)
-            darray_push(node->writelist, c->output);
+        if(cmd->input)
+            darray_push(node->readlist, cmd->input);
+        if(cmd->output)
+            darray_push(node->writelist, cmd->output);
     }
-    else if(c->type == SUBSHELL_COMMAND)
+    else if(cmd->type == SUBSHELL_COMMAND)
     {
-        command_t subshell_cmd = c->u.subshell_command; 
-        copy_to_node(node, subshell_cmd);
+        command_t subshell_cmd = cmd->u.subshell_command; 
+        construct_read_write_list(node, subshell_cmd);
+        if(cmd->input)
+            darray_push(node->readlist, cmd->input);
+        if(cmd->output)
+            darray_push(node->writelist, cmd->output);
+    
     }
     else //all the other types
     {
-        command_t c1 = c->u.command[0];
-        copy_to_node(node, c1);
+        command_t c1 = cmd->u.command[0];
+        construct_read_write_list(node, c1);
  
-        command_t c2 = c->u.command[1];
-        copy_to_node(node, c2);
+        command_t c2 = cmd->u.command[1];
+        construct_read_write_list(node, c2);
     }
     
-    node->pid = 0; //PLACEHOLDER
 }
 
 void construct_dependencies(darray_t g, graph_node_t node)
@@ -272,7 +254,7 @@ execute_time_travel (command_stream_t s)
     while ((c = read_command_stream (s))) {
         graph_node_t node = init_graph_node();
         node->cmd = c;
-        construct_read_write_list(node);
+        construct_read_write_list(node, c);
         construct_dependencies(g, node);
         darray_push(g, node);
     }
