@@ -14,3 +14,12 @@ assumptions:
 - Two newlines, which normally denotes the end of a complete command, is treated
   as an error when inside a subshell
 - Additional redirects within a simple command will overwrite earlier ones
+
+# Part C #
+
+Our dependency-checking algorithm works slightly differently. Essentially, we
+give each graph node an after list, denoting which graph nodes, or commands,
+depend on that command. When a command is done running, each command in its
+after list lowers their dependency count. If any reaches 0, it is also
+executed and added to a list of currently-running sources, which are polled
+in a non-blocking way.
