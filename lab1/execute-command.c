@@ -11,13 +11,14 @@
 
 //============================ Sequential execution ============================
 
+static bool measure;
+static int pfd[2];
+
 int
 command_status (command_t c)
 {
     return c->status;
 }
-
-int execute_node(command_t c, bool measure);
 
 void redirect(int* fd_in, int* fd_out, char* input, char* output)
 {
@@ -35,26 +36,18 @@ void redirect(int* fd_in, int* fd_out, char* input, char* output)
     }
 }
 
-int fdwexec(command_t c, bool measure)
+int fdwexec(command_t c)
 {
     int fd_in, fd_out;
     int status;
     int p = fork();
     if (p == 0) {
         redirect(&fd_in, &fd_out, c->input, c->output);
-        if (c->type == SIMPLE_COMMAND) {
-            if (strcmp(c->u.word[0], "exec"))
-                execvp(c->u.word[0], c->u.word);
-            else
-                execvp(c->u.word[1], c->u.word+1);
-            error(1,0,"Unable to execvp %s", c->u.word[0]);
-        }
-        else if (c->type == SUBSHELL_COMMAND) {
-            status = execute_node(c->u.subshell_command, measure);
-            if (c->input) close(fd_in);
-            if (c->output) close(fd_out);
-            _exit(status);
-        }
+        if (strcmp(c->u.word[0], "exec"))
+            execvp(c->u.word[0], c->u.word);
+        else
+            execvp(c->u.word[1], c->u.word+1);
+        error(1,0,"Unable to execvp %s", c->u.word[0]);
     }
     if (p > 0)
         if (waitpid(p, &status, 0) < 0)
@@ -64,33 +57,32 @@ int fdwexec(command_t c, bool measure)
     return WEXITSTATUS(status);
 }
 
-int execute_node(command_t c, bool measure)
+int execute_node(command_t c)
 {
     if(c->type == SIMPLE_COMMAND)
     {
-        c->status = fdwexec(c, measure);
+        c->status = fdwexec(c);
     }
     else if(c->type == AND_COMMAND)
     {
-        int s = execute_node(c->u.command[0], measure);
+        int s = execute_node(c->u.command[0]);
         if(!s)
-            c->status = execute_node(c->u.command[1], measure);
+            c->status = execute_node(c->u.command[1]);
         else
             c->status = s;
-        s = (int)measure; //PLACEHOLDER
     }
     else if(c->type == OR_COMMAND)
     {
-        int s = (execute_node(c->u.command[0], measure));
+        int s = execute_node(c->u.command[0]);
         if(s)
-            c->status = (execute_node(c->u.command[1], measure));
+            c->status = (execute_node(c->u.command[1]));
         else
             c->status = s;
     }
     else if(c->type == SEQUENCE_COMMAND)
     {
-        execute_node(c->u.command[0], measure);
-        c->status = execute_node(c->u.command[1], measure);
+        execute_node(c->u.command[0]);
+        c->status = execute_node(c->u.command[1]);
     }
     else if(c->type == PIPE_COMMAND)
     {
@@ -101,7 +93,7 @@ int execute_node(command_t c, bool measure)
         if (p1 == 0) {
             close(fd[0]);
             if (dup2(fd[1], 1) < 0) error(1,0,"Unable to dup2");
-            s = execute_node(c->u.command[0], measure);
+            s = execute_node(c->u.command[0]);
             close(fd[1]);
             _exit(s);
         }
@@ -110,7 +102,7 @@ int execute_node(command_t c, bool measure)
         if (p2 == 0) {
             close(fd[1]);
             if (dup2(fd[0], 0) < 0) error(1,0,"Unable to dup2");
-            s = execute_node(c->u.command[1], measure);
+            s = execute_node(c->u.command[1]);
             close(fd[0]);
             _exit(s);
         }
@@ -123,16 +115,34 @@ int execute_node(command_t c, bool measure)
     }
     else if(c->type == SUBSHELL_COMMAND)
     {
-        c->status = fdwexec(c, measure);
+        int fd_in, fd_out, s, p;
+        p = fork();
+        if (p == 0) {
+            redirect(&fd_in, &fd_out, c->input, c->output);
+            s = execute_node(c->u.subshell_command);
+            if (c->input) close(fd_in);
+            if (c->output) close(fd_out);
+            _exit(s);
+        }
+        if (p > 0)
+            if (waitpid(p, &s, 0) < 0)
+                error(1,0, "Unable to wait for pid %d", p);
+        if (p < 0)
+            error(1,0, "Unable to fork");
+        c->status = WEXITSTATUS(s);
     }
     
     return c->status;
 }
 
 void
-execute_command (command_t c, bool measure)
+execute_command (command_t c, bool m)
 {
-    execute_node(c, measure);
+    measure = m;
+    if (m) pipe(pfd);
+    execute_node(c);
+    if (m) {
+    }
 }
 
 //============================ Time travel execution ============================
@@ -255,6 +265,8 @@ void construct_dependencies(darray_t g, graph_node_t node)
 void
 execute_time_travel (command_stream_t s)
 {
+    measure = false;
+
     //Construct graph
     darray_t g = darray_init(); //darray of graph_node_t
     command_t c;
@@ -281,7 +293,7 @@ execute_time_travel (command_stream_t s)
         graph_node_t node = (graph_node_t)darray_get(g, i);
         int p = fork();
         if (p == 0) {
-            int ret = execute_node(node->cmd, false);
+            int ret = execute_node(node->cmd);
             _exit(ret);
         }
         else if (p > 0)
@@ -304,7 +316,7 @@ execute_time_travel (command_stream_t s)
                     if (next->dep == 0) {
                         p = fork();
                         if (p == 0) {
-                            int ret = execute_node(next->cmd, false);
+                            int ret = execute_node(next->cmd);
                             _exit(ret);
                         }
                         else if (p > 0) {
