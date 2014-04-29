@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <string.h>
 #include "darray.h"
+#include <stdio.h>
 
 //============================ Sequential execution ============================
 
@@ -38,9 +39,8 @@ void redirect(int* fd_in, int* fd_out, char* input, char* output)
 
 int fdwexec(command_t c)
 {
-    int fd_in, fd_out;
-    int status;
-    int p = fork();
+    int fd_in, fd_out, s, p;
+    p = fork();
     if (p == 0) {
         redirect(&fd_in, &fd_out, c->input, c->output);
         if (strcmp(c->u.word[0], "exec"))
@@ -50,18 +50,44 @@ int fdwexec(command_t c)
         error(1,0,"Unable to execvp %s", c->u.word[0]);
     }
     if (p > 0)
-        if (waitpid(p, &status, 0) < 0)
+        if (waitpid(p, &s, 0) < 0)
             error(1,0, "Unable to wait for pid %d", p);
     if (p < 0)
         error(1,0, "Unable to fork");
-    return WEXITSTATUS(status);
+    return WEXITSTATUS(s);
+}
+
+int
+mexec(command_t c)
+{
+    if (!measure) return fdwexec(c);
+    
+    struct rusage rusage;
+    size_t rss;
+    int p, s;
+    p = fork();
+    if (p == 0) {
+        s = fdwexec(c);
+        getrusage(RUSAGE_CHILDREN,  &rusage);
+        rss = (size_t)(rusage.ru_maxrss * 1024L);
+        char buf[50] = {0};
+        sprintf(buf, "%ld %ld\n", (long)c, (long)rss);
+        write(pfd[1], buf, strlen(buf));
+        _exit(s);
+    }
+    if (p > 0)
+        if (waitpid(p, &s, 0) < 0)
+            error(1,0, "Unable to wait for pid %d", p);
+    if (p < 0)
+        error(1,0, "Unable to fork");
+    return WEXITSTATUS(s);
 }
 
 int execute_node(command_t c)
 {
     if(c->type == SIMPLE_COMMAND)
     {
-        c->status = fdwexec(c);
+        c->status = mexec(c);
     }
     else if(c->type == AND_COMMAND)
     {
@@ -142,6 +168,17 @@ execute_command (command_t c, bool m)
     if (m) pipe(pfd);
     execute_node(c);
     if (m) {
+        close(pfd[1]);
+        FILE* p = fdopen(pfd[0], "r");
+        long n1, n2;
+        while ((fscanf(p, "%ld %ld", &n1, &n2)) == 2) {
+            printf("%ld ", n2);
+            int i;
+            c = (command_t)n1;
+            for (i = 0; c->u.word[i]; i++)
+                printf("%s ", ((command_t)n1)->u.word[i]);
+            printf("\n");
+        }
     }
 }
 

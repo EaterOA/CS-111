@@ -32,7 +32,7 @@ main (int argc, char **argv)
   program_name = argv[0];
 
   for (;;)
-    switch (getopt (argc, argv, "pt"))
+    switch (getopt (argc, argv, "pmt"))
       {
       case 'p': print_tree = true; break;
       case 'm': measure_resource = true; break;
