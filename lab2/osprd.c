@@ -34,7 +34,7 @@
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("CS 111 RAM Disk");
 // EXERCISE: Pass your names into the kernel as the module's authors.
-MODULE_AUTHOR("Skeletor");
+MODULE_AUTHOR("Vincent Wong and Eric Du");
 
 #define OSPRD_MAJOR	222
 
@@ -107,11 +107,15 @@ static void for_each_open_file(struct task_struct *task,
  */
 static void osprd_process_request(osprd_info_t *d, struct request *req)
 {
+    unsigned int o, b;
+    long int *ll_dat, *ll_buf;
+
 	if (!blk_fs_request(req)) {
 		end_request(req, 0);
 		return;
 	}
 
+    // DONE
 	// EXERCISE: Perform the read or write request by copying data between
 	// our data array and the request's buffer.
 	// Hint: The 'struct request' argument tells you what kind of request
@@ -119,9 +123,24 @@ static void osprd_process_request(osprd_info_t *d, struct request *req)
 	// Read about 'struct request' in <linux/blkdev.h>.
 	// Consider the 'req->sector', 'req->current_nr_sectors', and
 	// 'req->buffer' members, and the rq_data_dir() function.
+    if (req->sector + req->current_nr_sectors > nsectors) {
+        eprintk("Request exceeds sector limit\n");
+        end_request(req, 0);
+        return;
+    }
+    ll_dat = (long int*)d->data;
+    ll_buf = (long int*)req->buffer;
+    o = req->sector * SECTOR_SIZE / sizeof(long int);
+    b = req->current_nr_sectors * SECTOR_SIZE / sizeof(long int);
 
-	// Your code here.
-	eprintk("Should process request...\n");
+    if (rq_data_dir(req) == READ) {
+        while (b --> 0)
+            ll_buf[b] = ll_dat[b+o];
+    }
+    else if (rq_data_dir(req) == WRITE) {
+        while (b --> 0)
+            ll_dat[b+o] = ll_buf[b];
+    }
 
 	end_request(req, 1);
 }
