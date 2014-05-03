@@ -33,6 +33,7 @@
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("CS 111 RAM Disk");
+// DONE
 // EXERCISE: Pass your names into the kernel as the module's authors.
 MODULE_AUTHOR("Vincent Wong and Eric Du");
 
@@ -108,7 +109,6 @@ static void for_each_open_file(struct task_struct *task,
 static void osprd_process_request(osprd_info_t *d, struct request *req)
 {
     unsigned int o, b;
-    long int *ll_dat, *ll_buf;
 
 	if (!blk_fs_request(req)) {
 		end_request(req, 0);
@@ -128,18 +128,14 @@ static void osprd_process_request(osprd_info_t *d, struct request *req)
         end_request(req, 0);
         return;
     }
-    ll_dat = (long int*)d->data;
-    ll_buf = (long int*)req->buffer;
-    o = req->sector * SECTOR_SIZE / sizeof(long int);
-    b = req->current_nr_sectors * SECTOR_SIZE / sizeof(long int);
+    o = req->sector * SECTOR_SIZE;
+    b = req->current_nr_sectors * SECTOR_SIZE;
 
     if (rq_data_dir(req) == READ) {
-        while (b --> 0)
-            ll_buf[b] = ll_dat[b+o];
+        memcpy(req->buffer,d->data + o, b);
     }
     else if (rq_data_dir(req) == WRITE) {
-        while (b --> 0)
-            ll_dat[b+o] = ll_buf[b];
+        memcpy(d->data + o, req->buffer, b);
     }
 
 	end_request(req, 1);
