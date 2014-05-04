@@ -609,6 +609,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		}
 
 	} else if (cmd == OSPRDIOCTRYACQUIRE) {
+        // DONE
 		// EXERCISE: ATTEMPT to lock the ramdisk.
 		//
 		// This is just like OSPRDIOCACQUIRE, except it should never
@@ -617,8 +618,36 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// Otherwise, if we can grant the lock request, return 0.
 
 		// Your code here (instead of the next two lines).
-		eprintk("Attempting to try acquire\n");
-		r = -ENOTTY;
+        osp_spin_lock(&(d->mutex));
+
+        myTicket = d->ticket_head;
+        d->ticket_head++;
+        if (pidInList(d->readLockingPids, current->pid)) { 		
+            osp_spin_unlock(&(d->mutex));
+            return -EBUSY;
+        }
+        if (pidInList(d->writeLockingPids, current->pid)) {
+            osp_spin_unlock(&(d->mutex));
+            return -EBUSY;
+        }
+
+        osp_spin_unlock(&(d->mutex)); 
+        if (d->ticket_tail != myTicket || d->writeLockingPids != NULL)
+            return -EBUSY;
+        if (filp_writable && d->readLockingPids != NULL)
+            return -EBUSY;
+        osp_spin_lock(&(d->mutex));
+
+        filp->f_flags |= F_OSPRD_LOCKED;
+        if (filp_writable)
+            addToList(&(d->writeLockingPids), current->pid);
+        else
+            addToList(&(d->readLockingPids), current->pid);
+        grantTicketToNextAliveProcessInOrder(d);
+
+        osp_spin_unlock(&(d->mutex));
+        wake_up_all(&(d->blockq));
+        return 0;
 
 	} else if (cmd == OSPRDIOCRELEASE) {
 
