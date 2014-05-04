@@ -403,9 +403,10 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 
 		// Your code here.
 		osp_spin_lock(&(d->mutex));
+
 		if (!pidInList(d->writeLockingPids, current->pid) && !(pidInList(d->readLockingPids, current->pid))) {
 			osp_spin_unlock(&(d->mutex));
-			return -EINVAL;
+			return 0;
 		}
 
 		if(filp_writable == FMODE_WRITE)
@@ -638,7 +639,15 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
         osp_spin_lock(&(d->mutex));
 
         myTicket = d->ticket_head;
-        d->ticket_head++;
+        if (d->ticket_tail != myTicket || d->writeLockingPids != NULL) {
+            osp_spin_unlock(&(d->mutex));
+            return -EBUSY;
+        }
+        if (filp_writable && d->readLockingPids != NULL) {
+            osp_spin_unlock(&(d->mutex));
+            return -EBUSY;
+        }
+
         if (pidInList(d->readLockingPids, current->pid)) { 		
             osp_spin_unlock(&(d->mutex));
             return -EBUSY;
@@ -647,13 +656,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
             osp_spin_unlock(&(d->mutex));
             return -EBUSY;
         }
-
-        osp_spin_unlock(&(d->mutex)); 
-        if (d->ticket_tail != myTicket || d->writeLockingPids != NULL)
-            return -EBUSY;
-        if (filp_writable && d->readLockingPids != NULL)
-            return -EBUSY;
-        osp_spin_lock(&(d->mutex));
+        d->ticket_head++;
 
         filp->f_flags |= F_OSPRD_LOCKED;
         if (filp_writable)
