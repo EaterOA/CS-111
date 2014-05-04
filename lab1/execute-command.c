@@ -9,6 +9,7 @@
 #include <string.h>
 #include "darray.h"
 #include <stdio.h>
+#include <time.h>
 
 //============================ Sequential execution ============================
 
@@ -37,9 +38,14 @@ void redirect(int* fd_in, int* fd_out, char* input, char* output)
     }
 }
 
-int fdwexec(command_t c)
+int
+fdwexec(command_t c)
 {
+    struct rusage rusage;
+    size_t rss;
+    long int sec, usec;
     int fd_in, fd_out, s, p;
+
     p = fork();
     if (p == 0) {
         redirect(&fd_in, &fd_out, c->input, c->output);
@@ -49,35 +55,24 @@ int fdwexec(command_t c)
             execvp(c->u.word[1], c->u.word+1);
         error(1,0,"Unable to execvp %s", c->u.word[0]);
     }
-    if (p > 0)
-        if (waitpid(p, &s, 0) < 0)
-            error(1,0, "Unable to wait for pid %d", p);
-    if (p < 0)
-        error(1,0, "Unable to fork");
-    return WEXITSTATUS(s);
-}
-
-int
-mexec(command_t c)
-{
-    if (!measure) return fdwexec(c);
-    
-    struct rusage rusage;
-    size_t rss;
-    int p, s;
-    p = fork();
-    if (p == 0) {
-        s = fdwexec(c);
-        getrusage(RUSAGE_CHILDREN,  &rusage);
-        rss = (size_t)(rusage.ru_maxrss * 1024L);
-        char buf[50] = {0};
-        sprintf(buf, "%ld %ld\n", (long)c, (long)rss);
-        write(pfd[1], buf, strlen(buf));
-        _exit(s);
+    if (p > 0) {
+        if (!measure) {
+            if (waitpid(p, &s, 0) < 0)
+                error(1,0, "Unable to wait for pid %d", p);
+        }
+        else {
+            if (wait4(p, &s, 0, &rusage) < 0)
+                error(1,0, "Unable to wait for pid %d", p);
+            rss = (size_t)(rusage.ru_maxrss * 1024L);
+            sec = rusage.ru_utime.tv_sec;
+            usec = rusage.ru_utime.tv_usec;
+            char buf[50];
+            sprintf(buf, " m %ld %ld\n", (long)c, (long)rss);
+            write(pfd[1], buf, strlen(buf));
+            sprintf(buf, " t %ld %ld%06ld\n", (long)c, sec, usec);
+            write(pfd[1], buf, strlen(buf));
+        }
     }
-    if (p > 0)
-        if (waitpid(p, &s, 0) < 0)
-            error(1,0, "Unable to wait for pid %d", p);
     if (p < 0)
         error(1,0, "Unable to fork");
     return WEXITSTATUS(s);
@@ -85,9 +80,13 @@ mexec(command_t c)
 
 int execute_node(command_t c)
 {
+    struct timespec start, end;
+    if (measure)
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
+
     if(c->type == SIMPLE_COMMAND)
     {
-        c->status = mexec(c);
+        c->status = fdwexec(c);
     }
     else if(c->type == AND_COMMAND)
     {
@@ -157,6 +156,19 @@ int execute_node(command_t c)
             error(1,0, "Unable to fork");
         c->status = WEXITSTATUS(s);
     }
+
+    if (measure) {
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
+        long int usec = end.tv_nsec/1000 - start.tv_nsec/1000;
+        long int sec = end.tv_sec - start.tv_sec;
+        if (usec < 0) {
+            usec += 1000000;
+            sec++;
+        }
+        char buf[50];
+        sprintf(buf, " t %ld %ld%06ld\n", (long)c, sec, usec);
+        write(pfd[1], buf, strlen(buf));
+    }
     
     return c->status;
 }
@@ -171,12 +183,18 @@ execute_command (command_t c, bool m)
         close(pfd[1]);
         FILE* p = fdopen(pfd[0], "r");
         long n1, n2;
-        while ((fscanf(p, "%ld %ld", &n1, &n2)) == 2) {
-            printf("%ld ", n2);
+        char tag;
+        while (fscanf(p, "%*[ \n\t]%c %ld %ld", &tag, &n1, &n2) > 0) {
+            printf("%c %ld ", tag, n2);
             int i;
             c = (command_t)n1;
-            for (i = 0; c->u.word[i]; i++)
-                printf("%s ", ((command_t)n1)->u.word[i]);
+            if (c->type == SIMPLE_COMMAND) {
+                for (i = 0; c->u.word[i]; i++)
+                    printf("%s ", c->u.word[i]);
+            }
+            else {
+                printf("%d", (int)c->type);
+            }
             printf("\n");
         }
     }

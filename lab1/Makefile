@@ -25,7 +25,7 @@ DIST_SOURCES = \
   $(TESTS) check-dist README
 
 timetrash: $(TIMETRASH_OBJECTS)
-	$(CC) $(CFLAGS) -o $@ $(TIMETRASH_OBJECTS)
+	$(CC) $(CFLAGS) -o $@ $(TIMETRASH_OBJECTS) -lrt
 
 alloc.o: alloc.h
 execute-command.o main.o print-command.o read-command.o darray.o: command.h darray.h
