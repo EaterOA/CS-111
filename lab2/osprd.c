@@ -402,10 +402,28 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 		// as appropriate.
 
 		// Your code here.
+		osp_spin_lock(&(d->mutex));
 
-		// This line avoids compiler warnings; you may remove it.
-		(void) filp_writable, (void) d;
+		if (!pidInList(d->writeLockingPids, current->pid) && !(pidInList(d->readLockingPids, current->pid))) {
+			osp_spin_unlock(&(d->mutex));
+			return 0;
+		}
 
+		if(filp_writable == FMODE_WRITE)
+		{
+			removeFromList(&(d->writeLockingPids), current->pid);	
+		}
+		else
+		{
+			removeFromList(&(d->readLockingPids), current->pid);	
+		}
+
+		if (d->readLockingPids == NULL && d->writeLockingPids == NULL) {
+			filp->f_flags &= !F_OSPRD_LOCKED;
+		}
+		osp_spin_unlock(&(d->mutex));
+        wake_up_all(&d->blockq);
+			
 	}
 
 	return 0;
@@ -621,7 +639,15 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
         osp_spin_lock(&(d->mutex));
 
         myTicket = d->ticket_head;
-        d->ticket_head++;
+        if (d->ticket_tail != myTicket || d->writeLockingPids != NULL) {
+            osp_spin_unlock(&(d->mutex));
+            return -EBUSY;
+        }
+        if (filp_writable && d->readLockingPids != NULL) {
+            osp_spin_unlock(&(d->mutex));
+            return -EBUSY;
+        }
+
         if (pidInList(d->readLockingPids, current->pid)) { 		
             osp_spin_unlock(&(d->mutex));
             return -EBUSY;
@@ -630,13 +656,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
             osp_spin_unlock(&(d->mutex));
             return -EBUSY;
         }
-
-        osp_spin_unlock(&(d->mutex)); 
-        if (d->ticket_tail != myTicket || d->writeLockingPids != NULL)
-            return -EBUSY;
-        if (filp_writable && d->readLockingPids != NULL)
-            return -EBUSY;
-        osp_spin_lock(&(d->mutex));
+        d->ticket_head++;
 
         filp->f_flags |= F_OSPRD_LOCKED;
         if (filp_writable)
