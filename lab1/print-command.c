@@ -7,7 +7,15 @@
 #include <stdlib.h>
 
 static void
-command_indented_print (int indent, command_t c)
+command_resource_print(command_t c, int mem_indent, int time_indent)
+{
+  char buf[100];
+  sprintf(buf, "(peakrss: %%%dld, cputime: %%%dld)", mem_indent, time_indent);
+  printf(buf, c->rss, c->utime);
+}
+
+static void
+command_indented_print (int indent, command_t c, bool measure, int mem_indent, int time_indent)
 {
   switch (c->type)
     {
@@ -17,16 +25,19 @@ command_indented_print (int indent, command_t c)
     case PIPE_COMMAND:
       {
 	command_indented_print (indent + 2 * (c->u.command[0]->type != c->type),
-				c->u.command[0]);
+				c->u.command[0], measure, mem_indent, time_indent);
+    printf(" \\\n");
+    if (measure) command_resource_print(c, mem_indent, time_indent);
 	static char const command_label[][3] = { "&&", ";", "||", "|" };
-	printf (" \\\n%*s%s\n", indent, "", command_label[c->type]);
+	printf ("%*s%s\n", indent, "", command_label[c->type]);
 	command_indented_print (indent + 2 * (c->u.command[1]->type != c->type),
-				c->u.command[1]);
+				c->u.command[1], measure, mem_indent, time_indent);
 	break;
       }
 
     case SIMPLE_COMMAND:
       {
+    if (measure) command_resource_print(c, mem_indent, time_indent);
 	char **w = c->u.word;
 	printf ("%*s%s", indent, "", *w);
 	while (*++w)
@@ -36,8 +47,10 @@ command_indented_print (int indent, command_t c)
 
     case SUBSHELL_COMMAND:
       printf ("%*s(\n", indent, "");
-      command_indented_print (indent + 1, c->u.subshell_command);
-      printf ("\n%*s)", indent, "");
+      command_indented_print (indent + 1, c->u.subshell_command, measure, mem_indent, time_indent);
+      printf("\n");
+      if (measure) command_resource_print(c, mem_indent, time_indent);
+      printf ("%*s)", indent, "");
       break;
 
     default:
@@ -51,8 +64,8 @@ command_indented_print (int indent, command_t c)
 }
 
 void
-print_command (command_t c)
+print_command (command_t c, bool measure, int mem_indent, int time_indent)
 {
-  command_indented_print (2, c);
+  command_indented_print (2, c, measure, mem_indent, time_indent);
   putchar ('\n');
 }

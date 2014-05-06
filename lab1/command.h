@@ -16,13 +16,14 @@ command_stream_t make_command_stream (int (*getbyte) (void *), void *arg);
 command_t read_command_stream (command_stream_t stream);
 
 /* Print a command to stdout, for debugging.  */
-void print_command (command_t);
+void print_command (command_t, bool measure, int mem_indent, int time_indent);
 
-/* Execute a command.  Use "time travel" if the flag is set.  */
-void execute_command (command_t, bool);
+/* Execute the command stream in sequential mode. Set measure to true to
+   measure resource consumption in script */
+int execute_sequential (command_stream_t, bool);
 
 /* Execute the command stream in time travel mode. */
-void execute_time_travel (command_stream_t);
+int execute_time_travel (command_stream_t);
 
 /* Return the exit status of a command, which must have previously
    been executed.  Wait for the command, if it is not already finished.  */

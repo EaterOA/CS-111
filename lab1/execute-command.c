@@ -80,10 +80,6 @@ fdwexec(command_t c)
 
 int execute_node(command_t c)
 {
-    struct timespec start, end;
-    if (measure)
-        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
-
     if(c->type == SIMPLE_COMMAND)
     {
         c->status = fdwexec(c);
@@ -157,47 +153,41 @@ int execute_node(command_t c)
         c->status = WEXITSTATUS(s);
     }
 
-    if (measure) {
-        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
-        long int usec = end.tv_nsec/1000 - start.tv_nsec/1000;
-        long int sec = end.tv_sec - start.tv_sec;
-        if (usec < 0) {
-            usec += 1000000;
-            sec++;
-        }
-        char buf[50];
-        sprintf(buf, " t %ld %ld%06ld\n", (long)c, sec, usec);
-        write(pfd[1], buf, strlen(buf));
-    }
-    
     return c->status;
 }
 
-void
-execute_command (command_t c, bool m)
+int
+execute_sequential (command_stream_t s, bool m)
 {
     measure = m;
-    if (m) pipe(pfd);
-    execute_node(c);
-    if (m) {
-        close(pfd[1]);
-        FILE* p = fdopen(pfd[0], "r");
-        long n1, n2;
-        char tag;
-        while (fscanf(p, "%*[ \n\t]%c %ld %ld", &tag, &n1, &n2) > 0) {
-            printf("%c %ld ", tag, n2);
-            int i;
-            c = (command_t)n1;
-            if (c->type == SIMPLE_COMMAND) {
-                for (i = 0; c->u.word[i]; i++)
-                    printf("%s ", c->u.word[i]);
+    command_t c;
+    int ret;
+    while ((c = read_command_stream (s))) {
+        if (m) pipe(pfd);
+        ret = execute_node(c);
+        if (m) {
+            close(pfd[1]);
+            FILE* p = fdopen(pfd[0], "r");
+            long n1, n2;
+            char tag;
+            while (fscanf(p, "%*[ \n\t]%c %ld %ld", &tag, &n1, &n2) > 0) {
+                printf("%c %ld ", tag, n2);
+                int i;
+                c = (command_t)n1;
+                if (c->type == SIMPLE_COMMAND) {
+                    for (i = 0; c->u.word[i]; i++)
+                        printf("%s ", c->u.word[i]);
+                }
+                else {
+                    printf("%d", (int)c->type);
+                }
+                printf("\n");
             }
-            else {
-                printf("%d", (int)c->type);
-            }
-            printf("\n");
+            fclose(p);
         }
     }
+    
+    return ret;
 }
 
 //============================ Time travel execution ============================
@@ -317,7 +307,7 @@ void construct_dependencies(darray_t g, graph_node_t node)
     }
 }
 
-void
+int
 execute_time_travel (command_stream_t s)
 {
     measure = false;
@@ -390,4 +380,6 @@ execute_time_travel (command_stream_t s)
                 error(1,0,"Unable to call waitpid on sources");
         }
     }
+    
+    return 0;
 }
