@@ -22,6 +22,26 @@ command_status (command_t c)
     return c->status;
 }
 
+void
+parse_rusage(long int* u_sec, long int* u_msec, long int* s_sec, long int* s_msec, long int* rss, struct rusage rusage)
+{
+    *u_sec = rusage.ru_utime.tv_sec;
+    *s_sec = rusage.ru_stime.tv_sec;
+    long int u_usec = rusage.ru_utime.tv_usec;
+    long int s_usec = rusage.ru_stime.tv_usec;
+    *u_msec = (u_usec + 500)/1000;
+    *s_msec = (s_usec + 500)/1000;
+    if (*u_msec >= 1000) {
+        *u_msec -= 1000;
+        (*u_sec)++;
+    }
+    if (*s_msec >= 1000) {
+        *s_msec -= 1000;
+        (*s_sec)++;
+    }
+    *rss = rusage.ru_maxrss;
+}
+
 void redirect(int* fd_in, int* fd_out, char* input, char* output)
 {
     if (input) {
@@ -42,8 +62,7 @@ int
 fdwexec(command_t c)
 {
     struct rusage rusage;
-    size_t rss;
-    long int sec, usec;
+    long int rss, u_sec, u_msec, s_sec, s_msec;
     int fd_in, fd_out, s, p;
 
     p = fork();
@@ -63,13 +82,11 @@ fdwexec(command_t c)
         else {
             if (wait4(p, &s, 0, &rusage) < 0)
                 error(1,0, "Unable to wait for pid %d", p);
-            rss = (size_t)(rusage.ru_maxrss * 1024L);
-            sec = rusage.ru_utime.tv_sec;
-            usec = rusage.ru_utime.tv_usec;
+            parse_rusage(&u_sec, &u_msec, &s_sec, &s_msec, &rss, rusage);
             char buf[50];
-            sprintf(buf, " m %ld %ld\n", (long)c, (long)rss);
+            sprintf(buf, "m %ld %ld\n", (long)c, rss);
             write(pfd[1], buf, strlen(buf));
-            sprintf(buf, " t %ld %ld%06ld\n", (long)c, sec, usec);
+            sprintf(buf, "t %ld %ld%03ld\n", (long)c, u_sec, u_msec);
             write(pfd[1], buf, strlen(buf));
         }
     }
@@ -152,46 +169,11 @@ int execute_node(command_t c)
             error(1,0, "Unable to fork");
         c->status = WEXITSTATUS(s);
     }
+    char buf[100];
+    sprintf(buf, "s %ld %d\n", (long)c, c->status);
+    write(pfd[1], buf, strlen(buf));
 
     return c->status;
-}
-
-int
-execute_sequential (command_stream_t s, bool m)
-{
-    measure = m;
-    command_t c;
-    int ret;
-    while ((c = read_command_stream (s))) {
-        if (m) pipe(pfd);
-        ret = execute_node(c);
-        if (m) {
-            close(pfd[1]);
-            FILE* p = fdopen(pfd[0], "r");
-            long n1, n2;
-            char tag;
-            while (fscanf(p, "%*[ \n\t]%c %ld %ld", &tag, &n1, &n2) > 0) {
-                printf("%c %ld ", tag, n2);
-                int i;
-                c = (command_t)n1;
-                if(tag == 'm')
-                    c->rss = n2;
-                else if(tag == 't')
-                    c->utime = n2;
-                if (c->type == SIMPLE_COMMAND) {
-                    for (i = 0; c->u.word[i]; i++)
-                        printf("%s ", c->u.word[i]);
-                }
-                else {
-                    printf("%d", (int)c->type);
-                }
-                printf("\n");
-            }
-            fclose(p);
-        }
-    }
-    
-    return ret;
 }
 
 void compute_time_rss(command_t c)
@@ -199,15 +181,13 @@ void compute_time_rss(command_t c)
     if(c->type == SUBSHELL_COMMAND)
     {
         compute_time_rss(c->u.subshell_command);
-        if(c->u.command[0]->rss > c->rss)
-            c->rss = c->u.command[0]->rss;
+        c->rss = c->u.subshell_command->rss;
         c->utime += c->u.subshell_command->utime;
     }
     else if(c->type == AND_COMMAND)
     {       
         compute_time_rss(c->u.command[0]);
-        if(c->u.command[0]->rss > c->rss)
-            c->rss = c->u.command[0]->rss;
+        c->rss = c->u.command[0]->rss;
         c->utime += c->u.command[0]->utime;
      
         if(!c->u.command[0]->status)
@@ -221,8 +201,7 @@ void compute_time_rss(command_t c)
     else if(c->type == OR_COMMAND)
     {
         compute_time_rss(c->u.command[0]);
-        if(c->u.command[0]->rss > c->rss)
-            c->rss = c->u.command[0]->rss;
+        c->rss = c->u.command[0]->rss;
         c->utime += c->u.command[0]->utime;
      
         if(c->u.command[0]->status)
@@ -236,8 +215,7 @@ void compute_time_rss(command_t c)
     else if(c->type == SEQUENCE_COMMAND || c->type == PIPE_COMMAND)
     {
         compute_time_rss(c->u.command[0]);
-        if(c->u.command[0]->rss > c->rss)
-            c->rss = c->u.command[0]->rss;
+        c->rss = c->u.command[0]->rss;
         c->utime += c->u.command[0]->utime;
       
         compute_time_rss(c->u.command[1]);
@@ -255,12 +233,12 @@ int count_forks(command_t c)
 {
     if(c->type == SUBSHELL_COMMAND)
     {
-        return count_forks(c->u.subshell_command);
+        return 1 + count_forks(c->u.subshell_command);
     }
     else if(c->type == PIPE_COMMAND)
     {
         int c1 = count_forks(c->u.command[0]);
-        return 1 + c1 + count_forks(c->u.command[1]);
+        return 2 + c1 + count_forks(c->u.command[1]);
     }
     else if(c->type == AND_COMMAND)
     {
@@ -288,6 +266,81 @@ int count_forks(command_t c)
     {
         return 1;
     }
+}
+
+void
+print_resource_use(int forks, long int c_utime)
+{
+    struct rusage rusage;
+    long int u_sec, u_msec, s_sec, s_msec, s_rss;
+    long int maxvm = 0;
+    char buf[100];
+    FILE* f;
+    
+    getrusage(RUSAGE_SELF, &rusage);
+    sprintf(buf, "/proc/%d/status", getpid());
+    f = fopen(buf, "r");
+    while (fgets(buf, 100, f)) {
+        if (strncmp("VmPeak:", buf, 7) == 0) {
+            sscanf(buf, "%*s %ld", &maxvm);
+            break;
+        }
+    }
+    parse_rusage(&u_sec, &u_msec, &s_sec, &s_msec, &s_rss, rusage);
+    printf("Statistics:\n");
+    printf("Shell user time: %ld.%03ld s\n", u_sec, u_msec);
+    printf("Shell system time: %ld.%03ld s\n", s_sec, s_msec);
+    printf("Shell peak RSS: %ld kb\n", s_rss);
+    printf("Shell peak VM: %ld kb\n", maxvm);
+    printf("Forks: %d\n", forks);
+    printf("Script user time: %ld.%03ld s\n", c_utime/1000, c_utime%1000);
+}
+
+int
+execute_sequential (command_stream_t s, bool m)
+{
+    int ret, i, mem_indent, time_indent;
+    long int n1, n2;
+    char tag, buf[100];
+    FILE* p;
+    command_t c, cur;
+
+    measure = m;
+    int forks = 0;
+    long int c_utime = 0;
+    for (i = 1; (c = read_command_stream (s)); i++) {
+        if (m) pipe(pfd);
+        ret = execute_node(c);
+        if (m) {
+            close(pfd[1]);
+            p = fdopen(pfd[0], "r");
+            while (fscanf(p, " %c %ld %ld", &tag, &n1, &n2) > 0) {
+                cur = (command_t)n1;
+                if(tag == 'm')
+                    cur->rss = n2;
+                else if(tag == 't')
+                    cur->utime = n2;
+                else if(tag == 's')
+                    cur->status = (int)n2;
+            }
+            fclose(p);
+            forks += count_forks(c);
+            compute_time_rss(c);
+            c_utime += c->utime;
+            printf("# %d\n", i);
+            sprintf(buf, "%ld", c->rss);
+            mem_indent = strlen(buf);
+            sprintf(buf, "%ld.%03ld", c->utime/1000, c->utime%1000);
+            time_indent = strlen(buf);
+            print_command(c, true, mem_indent, time_indent);
+            printf("\n");
+        }
+    }
+    
+    if (m) {
+        print_resource_use(forks, c_utime);
+    }
+    return ret;
 }
 
 //============================ Time travel execution ============================
