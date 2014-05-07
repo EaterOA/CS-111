@@ -210,7 +210,7 @@ void compute_time_rss(command_t c)
             c->rss = c->u.command[0]->rss;
         c->utime += c->u.command[0]->utime;
      
-        if(c->u.command[0]->status)
+        if(!c->u.command[0]->status)
         {
             compute_time_rss(c->u.command[1]);
             if(c->u.command[1]->rss > c->rss)
@@ -225,7 +225,7 @@ void compute_time_rss(command_t c)
             c->rss = c->u.command[0]->rss;
         c->utime += c->u.command[0]->utime;
      
-        if(!c->u.command[0]->status)
+        if(c->u.command[0]->status)
         {
             compute_time_rss(c->u.command[1]);
             if(c->u.command[1]->rss > c->rss)
@@ -255,12 +255,34 @@ int count_forks(command_t c)
 {
     if(c->type == SUBSHELL_COMMAND)
     {
-        return 1 + count_forks(c->u.subshell_command);
+        return count_forks(c->u.subshell_command);
     }
     else if(c->type == PIPE_COMMAND)
     {
         int c1 = count_forks(c->u.command[0]);
-        return 2 + c1 + count_forks(c->u.command[1]);
+        return 1 + c1 + count_forks(c->u.command[1]);
+    }
+    else if(c->type == AND_COMMAND)
+    {
+        int f = count_forks(c->u.command[0]);
+        if(!c->u.command[0]->status)
+        {
+            f += count_forks(c->u.command[1]);
+        }
+        return f;
+    }
+    else if(c->type == OR_COMMAND)
+    {
+        int f = count_forks(c->u.command[0]);
+        if(c->u.command[0]->status)
+        {
+            f += count_forks(c->u.command[1]);
+        }
+        return f;
+    }
+    else if(c->type == SEQUENCE_COMMAND)
+    {
+        return count_forks(c->u.command[0]) + count_forks(c->u.command[1]);
     }
     else //c->type == SIMPLE_COMMAND
     {
