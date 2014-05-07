@@ -174,6 +174,10 @@ execute_sequential (command_stream_t s, bool m)
                 printf("%c %ld ", tag, n2);
                 int i;
                 c = (command_t)n1;
+                if(tag == 'm')
+                    c->rss = n2;
+                else if(tag == 't')
+                    c->utime = n2;
                 if (c->type == SIMPLE_COMMAND) {
                     for (i = 0; c->u.word[i]; i++)
                         printf("%s ", c->u.word[i]);
@@ -188,6 +192,74 @@ execute_sequential (command_stream_t s, bool m)
     }
     
     return ret;
+}
+
+void compute_time(command_t c)
+{
+    if(c->type == SUBSHELL_COMMAND)
+    {
+        compute_time(c->u.subshell_command);
+        c->rss += c->u.subshell_command->rss;
+        c->utime += c->u.subshell_command->utime;
+    }
+    else if(c->type == AND_COMMAND)
+    {       
+        compute_time(c->u.command[0]);
+        c->rss += c->u.command[0]->rss;
+        c->utime += c->u.command[0]->utime;
+     
+        if(c->u.command[0]->status)
+        {
+            compute_time(c->u.command[1]);
+            c->rss += c->u.command[1]->rss;
+            c->utime += c->u.command[1]->utime;
+        }
+    }
+    else if(c->type == OR_COMMAND)
+    {
+        compute_time(c->u.command[0]);
+        c->rss += c->u.command[0]->rss;
+        c->utime += c->u.command[0]->utime;
+     
+        if(!c->u.command[0]->status)
+        {
+            compute_time(c->u.command[1]);
+            c->rss += c->u.command[1]->rss;
+            c->utime += c->u.command[1]->utime;
+        }
+    }
+    else if(c->type == SEQUENCE_COMMAND || c->type == PIPE_COMMAND)
+    {
+        compute_time(c->u.command[0]);
+        c->rss += c->u.command[0]->rss;
+        c->utime += c->u.command[0]->utime;
+     
+ 
+        compute_time(c->u.command[1]);
+        c->rss += c->u.command[1]->rss;
+        c->utime += c->u.command[1]->utime;
+    }
+    else //c->type == SIMPLE_COMMAND
+    {
+        return;
+    }
+}
+
+int count_forks(command_t c)
+{
+    if(c->type == SUBSHELL_COMMAND)
+    {
+        return 1 + count_forks(c->u.subshell_command);
+    }
+    else if(c->type == PIPE_COMMAND)
+    {
+        int c1 = count_forks(c->u.command[0]);
+        return 2 + c1 + count_forks(c->u.command[1]);
+    }
+    else //c->type == SIMPLE_COMMAND
+    {
+        return 1;
+    }
 }
 
 //============================ Time travel execution ============================
