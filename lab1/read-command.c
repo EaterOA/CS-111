@@ -47,7 +47,7 @@ command_t allocate_command()
     cmd->input = NULL;
     cmd->output = NULL;
     cmd->rss = 0;
-    cmd->utime = 0;
+    cmd->time = 0;
     return cmd;
 }
 

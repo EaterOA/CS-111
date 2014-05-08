@@ -24,7 +24,7 @@ struct command
 
   // Resource monitoring
   long int rss;
-  long int utime;
+  long int time;
 
   union
   {

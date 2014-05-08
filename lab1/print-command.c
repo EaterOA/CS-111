@@ -10,8 +10,8 @@ static void
 command_resource_print(command_t c, int mem_indent, int time_indent)
 {
   char buf[100];
-  sprintf(buf, "(peakrss: %%%dld kb, utime: %%%dld.%%03ld s)", mem_indent, time_indent-4);
-  printf(buf, c->rss, c->utime/1000, c->utime%1000);
+  sprintf(buf, "(peakrss: %%%dld kb, cputime: %%%dld.%%03ld s)", mem_indent, time_indent-4);
+  printf(buf, c->rss, c->time/1000, c->time%1000);
 }
 
 static void
@@ -51,7 +51,7 @@ command_indented_print (int indent, command_t c, bool measure, int mem_indent, i
       command_indented_print (indent + 1, c->u.subshell_command, measure, mem_indent, time_indent);
       printf("\n");
       if (measure)
-        printf ("%*s)", indent + mem_indent + time_indent + 25, "");
+        printf ("%*s)", indent + mem_indent + time_indent + 27, "");
       else
         printf ("%*s)", indent, "");
       break;

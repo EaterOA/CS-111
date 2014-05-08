@@ -24,7 +24,3 @@ int execute_sequential (command_stream_t, bool);
 
 /* Execute the command stream in time travel mode. */
 int execute_time_travel (command_stream_t);
-
-/* Return the exit status of a command, which must have previously
-   been executed.  Wait for the command, if it is not already finished.  */
-int command_status (command_t);
