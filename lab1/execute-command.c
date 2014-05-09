@@ -84,9 +84,9 @@ fdwexec(command_t c)
                 sec++;
             }
             char buf[50];
-            sprintf(buf, "m %ld %ld\n", (long)c, rss);
+            sprintf(buf, "m %p %ld\n", c, rss);
             write(pfd[1], buf, strlen(buf));
-            sprintf(buf, "t %ld %ld%03ld\n", (long)c, sec, msec);
+            sprintf(buf, "t %p %ld%03ld\n", c, sec, msec);
             write(pfd[1], buf, strlen(buf));
         }
     }
@@ -170,7 +170,7 @@ int execute_node(command_t c)
         c->status = WEXITSTATUS(s);
     }
     char buf[100];
-    sprintf(buf, "s %ld %d\n", (long)c, c->status);
+    sprintf(buf, "s %p %d\n", c, c->status);
     write(pfd[1], buf, strlen(buf));
 
     return c->status;
@@ -301,7 +301,7 @@ int
 execute_sequential (command_stream_t s, bool m)
 {
     int ret, i, mem_indent, time_indent;
-    long int n1, n2;
+    long int value;
     char tag, buf[100];
     FILE* p;
     command_t c, cur;
@@ -316,14 +316,13 @@ execute_sequential (command_stream_t s, bool m)
         if (m) {
             close(pfd[1]);
             p = fdopen(pfd[0], "r");
-            while (fscanf(p, " %c %ld %ld", &tag, &n1, &n2) > 0) {
-                cur = (command_t)n1;
+            while (fscanf(p, " %c %ld %ld", &tag, &cur, &value) > 0) {
                 if(tag == 'm')
-                    cur->rss = n2;
+                    cur->rss = value;
                 else if(tag == 't')
-                    cur->time = n2;
+                    cur->time = value;
                 else if(tag == 's')
-                    cur->status = (int)n2;
+                    cur->status = (int)value;
             }
             fclose(p);
             forks += count_forks(c);
