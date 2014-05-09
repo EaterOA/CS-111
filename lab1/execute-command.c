@@ -169,9 +169,12 @@ int execute_node(command_t c)
             error(1,0, "Unable to fork");
         c->status = WEXITSTATUS(s);
     }
-    char buf[100];
-    sprintf(buf, "s %p %d\n", c, c->status);
-    write(pfd[1], buf, strlen(buf));
+    
+    if (measure) {
+        char buf[100];
+        sprintf(buf, "s %p %d\n", c, c->status);
+        write(pfd[1], buf, strlen(buf));
+    }
 
     return c->status;
 }
@@ -269,13 +272,13 @@ int count_forks(command_t c)
 }
 
 void
-print_resource_use(int forks, long int c_time, long int c_rss)
+print_resource_use(FILE* measure_fp, int forks, long int c_time, long int c_rss)
 {
     struct rusage rusage;
     long int u_sec, u_msec, s_sec, s_msec, s_rss;
     long int maxvm = 0;
     char buf[100];
-    FILE* f;
+    FILE *f, *fp = measure_fp;
     
     getrusage(RUSAGE_SELF, &rusage);
     sprintf(buf, "/proc/%d/status", getpid());
@@ -287,36 +290,38 @@ print_resource_use(int forks, long int c_time, long int c_rss)
         }
     }
     parse_rusage(&u_sec, &u_msec, &s_sec, &s_msec, &s_rss, rusage);
-    printf("Statistics:\n");
-    printf("Shell user time: %ld.%03ld s\n", u_sec, u_msec);
-    printf("Shell system time: %ld.%03ld s\n", s_sec, s_msec);
-    printf("Shell peak RSS: %ld kb\n", s_rss);
-    printf("Shell peak VM: %ld kb\n", maxvm);
-    printf("Forks: %d\n", forks);
-    printf("Script cpu time: %ld.%03ld s\n", c_time/1000, c_time%1000);
-    printf("Script peak RSS: %ld kb\n", c_rss);
+    fprintf(fp, "Statistics:\n");
+    fprintf(fp, "Shell user time: %ld.%03ld s\n", u_sec, u_msec);
+    fprintf(fp, "Shell system time: %ld.%03ld s\n", s_sec, s_msec);
+    fprintf(fp, "Shell peak RSS: %ld kb\n", s_rss);
+    fprintf(fp, "Shell peak VM: %ld kb\n", maxvm);
+    fprintf(fp, "Forks: %d\n", forks);
+    fprintf(fp, "Script cpu time: %ld.%03ld s\n", c_time/1000, c_time%1000);
+    fprintf(fp, "Script peak RSS: %ld kb\n", c_rss);
 }
 
 int
-execute_sequential (command_stream_t s, bool m)
+execute_sequential (command_stream_t s, char* measure_file_name)
 {
     int ret, i, mem_indent, time_indent;
     long int value;
     char tag, buf[100];
-    FILE* p;
+    FILE *pipe_fp, *measure_fp;
     command_t c, cur;
-
-    measure = m;
     int forks = 0;
     long int c_time = 0;
     long int c_rss = 0;
+
+    measure = measure_file_name != NULL;
+    if (measure)
+        measure_fp = fopen(measure_file_name, "w");
     for (i = 1; (c = read_command_stream (s)); i++) {
-        if (m) pipe(pfd);
+        if (measure) pipe(pfd);
         ret = execute_node(c);
-        if (m) {
+        if (measure) {
             close(pfd[1]);
-            p = fdopen(pfd[0], "r");
-            while (fscanf(p, " %c %ld %ld", &tag, &cur, &value) > 0) {
+            pipe_fp = fdopen(pfd[0], "r");
+            while (fscanf(pipe_fp, " %c %p %ld", &tag, &cur, &value) > 0) {
                 if(tag == 'm')
                     cur->rss = value;
                 else if(tag == 't')
@@ -324,23 +329,24 @@ execute_sequential (command_stream_t s, bool m)
                 else if(tag == 's')
                     cur->status = (int)value;
             }
-            fclose(p);
+            fclose(pipe_fp);
             forks += count_forks(c);
             compute_time_rss(c);
             c_time += c->time;
             c_rss = (c->rss > c_rss ? c->rss : c_rss);
-            printf("# %d\n", i);
+            fprintf(measure_fp, "# %d\n", i);
             sprintf(buf, "%ld", c->rss);
             mem_indent = strlen(buf);
             sprintf(buf, "%ld.%03ld", c->time/1000, c->time%1000);
             time_indent = strlen(buf);
-            print_command(c, true, mem_indent, time_indent);
-            printf("\n");
+            print_command(c, measure_fp, mem_indent, time_indent);
+            fprintf(measure_fp, "\n");
         }
     }
     
-    if (m) {
-        print_resource_use(forks, c_time, c_rss);
+    if (measure) {
+        print_resource_use(measure_fp, forks, c_time, c_rss);
+        fclose(measure_fp);
     }
     return ret;
 }

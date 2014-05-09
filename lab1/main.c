@@ -28,14 +28,14 @@ main (int argc, char **argv)
   int command_number = 1;
   bool print_tree = false;
   bool time_travel = false;
-  bool measure_resource = false;
+  char* measure_file_name = NULL;
   program_name = argv[0];
 
   for (;;)
-    switch (getopt (argc, argv, "pmt"))
+    switch (getopt (argc, argv, "pm:t"))
       {
       case 'p': print_tree = true; break;
-      case 'm': measure_resource = true; break;
+      case 'm': measure_file_name = optarg; break;
       case 't': time_travel = true; break;
       default: usage (); break;
       case -1: goto options_exhausted;
@@ -65,7 +65,7 @@ main (int argc, char **argv)
     ret = execute_time_travel (command_stream);
   }
   else {
-    ret = execute_sequential (command_stream, measure_resource);
+    ret = execute_sequential (command_stream, measure_file_name);
   }
 
   return ret;

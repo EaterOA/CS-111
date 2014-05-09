@@ -1,6 +1,7 @@
 // UCLA CS 111 Lab 1 command interface
 
 #include <stdbool.h>
+#include <stdio.h>
 
 typedef struct command *command_t;
 typedef struct command_stream *command_stream_t;
@@ -16,11 +17,11 @@ command_stream_t make_command_stream (int (*getbyte) (void *), void *arg);
 command_t read_command_stream (command_stream_t stream);
 
 /* Print a command to stdout, for debugging.  */
-void print_command (command_t, bool measure, int mem_indent, int time_indent);
+void print_command (command_t, FILE*, int, int);
 
 /* Execute the command stream in sequential mode. Set measure to true to
    measure resource consumption in script */
-int execute_sequential (command_stream_t, bool);
+int execute_sequential (command_stream_t, char*);
 
 /* Execute the command stream in time travel mode. */
 int execute_time_travel (command_stream_t);
