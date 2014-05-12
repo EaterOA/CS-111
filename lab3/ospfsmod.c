@@ -655,6 +655,7 @@ zero_block(uint32_t b)
 //          then oi->oi_size should remain unchanged. Any newly
 //          allocated blocks should be erased (set to zero).
 //
+// DONE
 // EXERCISE: Finish off this function.
 //
 // Remember that allocating a new data block may require allocating
@@ -750,6 +751,7 @@ add_block(ospfs_inode_t *oi)
 //          instance if an indirect block that should be there isn't),
 //          then oi->oi_size should remain unchanged.
 //
+// DONE
 // EXERCISE: Finish off this function.
 //
 // Remember that you must free any indirect and doubly-indirect blocks
@@ -764,9 +766,50 @@ remove_block(ospfs_inode_t *oi)
 {
 	// current number of blocks in file
 	uint32_t n = ospfs_size2nblocks(oi->oi_size);
+    uint32_t m = n-1;
+    if (n == 0) return -EIO;
 
-	/* EXERCISE: Your code here */
-	return -EIO; // Replace this line
+    //Can be removed from direct
+    if (n <= OSPFS_NDIRECT) {
+        free_block(oi->oi_direct[n-1]);
+        oi->oi_direct[n-1] = 0;
+        goto gtfo;
+    }
+
+    //Can be removed from indirect
+    n -= OSPFS_NDIRECT;
+    if (n <= OSPFS_NINDIRECT) {
+        uint32_t* i = (uint32_t*)ospfs_block(oi->oi_indirect) + n-1;
+        free_block(*i);
+        *i = 0;
+        if (n == 1) {
+            free_block(oi->oi_indirect);
+            oi->oi_indirect = 0;
+        }
+        goto gtfo;
+    }
+
+    //Can be removed from indirect2
+    n -= OSPFS_NINDIRECT;
+    if (n <= OSPFS_NINDIRECT*OSPFS_NINDIRECT) { //Should always be true
+        uint32_t* j = (uint32_t*)ospfs_block(oi->oi_indirect2) + (n-1)/OSPFS_NINDIRECT;
+        uint32_t* i = (uint32_t*)ospfs_block(*j) + n%OSPFS_NINDIRECT - 1;
+        free_block(*i);
+        *i = 0;
+        if (n%OSPFS_NINDIRECT == 1) {
+            free_block(*j);
+            *j = 0;
+        }
+        if (n == 1) {
+            free_block(oi->oi_indirect2);
+            oi->oi_indirect2 = 0;
+        }
+        goto gtfo;
+    }
+
+    gtfo:
+    oi->oi_size = m*OSPFS_BLKSIZE;
+    return 0;
 }
 
 
