@@ -572,9 +572,19 @@ static uint32_t
 allocate_block(void)
 {
 	/* EXERCISE: Your code here */
-	return 0;
+        uint32_t index = OSPFS_FREEMAP_BLK;
+        void* bitmap = ospfs_block(index);	
+        while(index < ospfs_super->os_nblocks)
+        {
+            if(bitvector_test(bitmap, index))
+            {
+                bitvector_clear(bitmap, index);
+                return index;
+            }
+            index++;
+        }
+        return 0;
 }
-
 
 // free_block(blockno)
 //	Use this function to free an allocated block.
@@ -590,7 +600,8 @@ allocate_block(void)
 static void
 free_block(uint32_t blockno)
 {
-	/* EXERCISE: Your code here */
+        void* bitmap = ospfs_block(OSPFS_FREEMAP_BLOCK);
+        bitvector_set(bitmap, blockno);
 }
 
 
