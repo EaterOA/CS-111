@@ -968,7 +968,7 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 		// into user space.
 		// Use variable 'n' to track number of bytes moved.
 		/* EXERCISE: Your code here */
-        uint32_t offset = *fpos % OSPFS_BLKSIZE;
+        uint32_t offset = *f_pos % OSPFS_BLKSIZE;
         if(offset)
         {
             n = OSPFS_BLKSIZE - offset;
