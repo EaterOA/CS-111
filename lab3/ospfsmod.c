@@ -328,6 +328,7 @@ ospfs_delete_dentry(struct dentry *dentry)
 /*****************************************************************************
  * DIRECTORY OPERATIONS
  *
+ * DONE
  * EXERCISE: Finish 'ospfs_dir_readdir' and 'ospfs_symlink'.
  */
 
@@ -847,13 +848,14 @@ remove_block(ospfs_inode_t *oi)
 //         (The value that the final add_block or remove_block set it to
 //          is probably not correct).
 //
+//   DONE
 //   EXERCISE: Finish off this function.
 
 static int
 change_size(ospfs_inode_t *oi, uint32_t new_size)
 {
 	uint32_t old_size = oi->oi_size;
-	int r = 0;
+	int r = 0, i;
 
 	while (ospfs_size2nblocks(oi->oi_size) < ospfs_size2nblocks(new_size)){
         int status = add_block(oi);
@@ -861,7 +863,7 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
         {
             if(status == -ENOSPC)
             {
-                for(int i = 0; i < r; i++)
+                for (i = 0; i < r; i++)
                     oi->oi_size -= remove_block(oi);                
                 
                 oi->oi_size = old_size;   
@@ -871,14 +873,11 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
         r++;
 	}
 	while (ospfs_size2nblocks(oi->oi_size) > ospfs_size2nblocks(new_size)){ 
-	        /* EXERCISE: Your code here */
            int status = remove_block(oi);
            if(status) //when trying to remove 0 blocks?
                 return -EIO;
 	}
 
-	/* EXERCISE: Make sure you update necessary file meta data
-	             and return the proper value. */
 	oi->oi_size = new_size;
     return 0;
 }
@@ -1096,6 +1095,7 @@ find_direntry(ospfs_inode_t *dir_oi, const char *name, int namelen)
 //
 //	The create_blank_direntry function should use this convention.
 //
+// DONE
 // EXERCISE: Write this function.
 
 static ospfs_direntry_t *
@@ -1108,8 +1108,23 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	//    Use ERR_PTR if this fails; otherwise, clear out all the directory
 	//    entries and return one of them.
 
-	/* EXERCISE: Your code here. */
-	return ERR_PTR(-EINVAL); // Replace this line
+    //Look for a blank direntry
+    ospfs_direntry_t* ent;
+    uint32_t o;
+    int status;
+
+    for (o = 0; o < dir_oi->oi_size; o += OSPFS_DIRENTRY_SIZE) {
+        ent = ospfs_inode_data(dir_oi, o);
+        if (ent->od_ino == 0)
+            return ent;
+    }
+    //Allocate a new direntry
+    status = change_size(dir_oi, dir_oi->oi_size + OSPFS_DIRENTRY_SIZE);
+    if (status)
+        return ERR_PTR(status);
+    ent = ospfs_inode_data(dir_oi, dir_oi->oi_size - OSPFS_DIRENTRY_SIZE);
+    ent->od_ino = 0;
+    return ent;
 }
 
 // ospfs_link(src_dentry, dir, dst_dentry
