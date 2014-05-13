@@ -969,18 +969,10 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 		// Use variable 'n' to track number of bytes moved.
 		/* EXERCISE: Your code here */
         uint32_t offset = *f_pos % OSPFS_BLKSIZE;
-        if(offset)
-        {
-            n = OSPFS_BLKSIZE - offset;
-        }
-        else
-        {
-            n = OSPFS_BLKSIZE;
-            if(n > count - amount)
-            {
-                n = count - amount;
-            }   
-        }
+        n = OSPFS_BLKSIZE - offset;     
+
+        if(n > count - amount)
+            n = count - amount;
 
         long leftover = copy_to_user(buffer, data, n);
         if(leftover)
