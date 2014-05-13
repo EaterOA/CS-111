@@ -1127,6 +1127,24 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
     return ent;
 }
 
+// Utility function to see if directory contains name
+int ospfs_dir_contains_name(ospfs_inode_t* dir_oi, char name[], uint32_t len)
+{
+    uint32_t o, s;
+    ospfs_direntry_t* ent;
+
+    for (o = 0; o < dir_oi->oi_size; o += OSPFS_DIRENTRY_SIZE) {
+        ent = ospfs_inode_data(dir_oi, o);
+        if (ent->od_ino != 0) {
+            s = strlen(ent->od_name);
+            if (s == len && memcmp(ent->od_name, name, s) == 0)
+                return -EEXIST;
+        }
+    }
+
+    return 0;
+}
+
 // ospfs_link(src_dentry, dir, dst_dentry
 //   Linux calls this function to create hard links.
 //   It is the ospfs_dir_inode_ops.link callback.
@@ -1154,11 +1172,29 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 //               -ENOSPC       if the disk is full & the file can't be created;
 //               -EIO          on I/O error.
 //
+//   DONE
 //   EXERCISE: Complete this function.
 
 static int
 ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dentry) {
-	/* EXERCISE: Your code here. */
+
+	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
+    ospfs_direntry_t *ent;
+
+    if (dst_dentry->d_name.len > OSPFS_MAXNAMELEN)
+        return -ENAMETOOLONG;
+    if (ospfs_dir_contains_name(dir_oi, dst_dentry->d_name.name, dst_dentry->d_name.len))
+        return -EEXIST;
+
+    ent = create_blank_direntry(dir_oi);
+    if (IS_ERR(ent))
+        return PTR_ERR(ent);
+
+    dst_dentry->d_inode->i_ino = src_dentry->d_inode->i_ino;
+    ent->od_ino = src_dentry->d_inode->i_ino;
+    memcpy(ent->od_name, dst_dentry->d_name.name, dst_dentry->d_name.len);
+    ent->od_name[dst_dentry->d_name.len] = 0;
+    
 	return -EINVAL;
 }
 
@@ -1189,15 +1225,46 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 //   2. Find an empty inode.  Set the 'entry_ino' variable to its inode number.
 //   3. Initialize the directory entry and inode.
 //
+//   DONE
 //   EXERCISE: Complete this function.
 
 static int
 ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidata *nd)
 {
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
-	uint32_t entry_ino = 0;
-	/* EXERCISE: Your code here. */
-	return -EINVAL; // Replace this line
+    ospfs_inode_t *base, *cur;
+    ospfs_direntry_t *ent;
+	uint32_t o, entry_ino = 0;
+
+    if (dentry->d_name.len > OSPFS_MAXNAMELEN)
+        return -ENAMETOOLONG;
+    if (ospfs_dir_contains_name(dir_oi, dentry->d_name.name, dentry->d_name.len))
+        return -EEXIST;
+    
+    ent = create_blank_direntry(dir_oi);
+    if (IS_ERR(ent))
+        return PTR_ERR(ent);
+    
+    base = ospfs_block(ospfs_super->os_firstinob);
+    for (o = 0; o < ospfs_super->os_ninodes; o++) {
+        cur = base + o;
+        if (cur->oi_nlink == 0) {
+            entry_ino = o;
+            break;
+        }
+    }
+    if (!entry_ino)
+        return -ENOSPC;
+
+    ent->od_ino = entry_ino;
+    memcpy(ent->od_name, dentry->d_name.name, dentry->d_name.len);
+    ent->od_name[dentry->d_name.len] = 0;
+
+    cur = base + entry_ino;
+    cur->oi_size = 0;
+    cur->oi_ftype = OSPFS_FTYPE_REG;
+    cur->oi_nlink = 1;
+    cur->oi_mode = mode;
 
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
