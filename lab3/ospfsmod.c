@@ -614,6 +614,7 @@ free_block(uint32_t blockno)
 /*****************************************************************************
  * FILE OPERATIONS
  *
+ * DONE
  * EXERCISE: Finish off change_size, read, and write.
  *
  * The find_*, add_block, and remove_block functions are only there to support
@@ -933,6 +934,7 @@ ospfs_notify_change(struct dentry *dentry, struct iattr *attr)
 //   as 'f_pos'; read data starting at that position, and update the position
 //   when you're done.
 //
+//   DONE
 //   EXERCISE: Complete this function.
 
 static ssize_t
@@ -944,7 +946,6 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 
 	// Make sure we don't read past the end of the file!
 	// Change 'count' so we never read past the end of the file.
-	/* EXERCISE: Your code here */
     int left = oi->oi_size - *f_pos;
     if(count > left)
         count = left;
@@ -961,16 +962,14 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 			goto done;
 		}
 
-		data = ospfs_block(blockno);
+        uint32_t offset = *f_pos % OSPFS_BLKSIZE;
+		data = (char*)ospfs_block(blockno) + offset;
 
 		// Figure out how much data is left in this block to read.
 		// Copy data into user space. Return -EFAULT if unable to write
 		// into user space.
 		// Use variable 'n' to track number of bytes moved.
-		/* EXERCISE: Your code here */
-        uint32_t offset = *f_pos % OSPFS_BLKSIZE;
         n = OSPFS_BLKSIZE - offset;     
-
         if(n > count - amount)
             n = count - amount;
 
@@ -1003,51 +1002,59 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 //   where you cannot read past the end of the file, it is OK to write past
 //   the end of the file; this should simply change the file's size.
 //
+//   DONE
 //   EXERCISE: Complete this function.
 
 static ssize_t
 ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *f_pos)
 {
 	ospfs_inode_t *oi = ospfs_inode(filp->f_dentry->d_inode->i_ino);
-	int retval = 0;
 	size_t amount = 0;
 
 	// Support files opened with the O_APPEND flag.  To detect O_APPEND,
 	// use struct file's f_flags field and the O_APPEND bit.
-	/* EXERCISE: Your code here */
+    int append = filp->f_flags & O_APPEND;
+    if (append)
+        *f_pos = oi->oi_size;
 
 	// If the user is writing past the end of the file, change the file's
 	// size to accomodate the request.  (Use change_size().)
-	/* EXERCISE: Your code here */
+    uint32_t skipped = *f_pos;
+    uint32_t remaining = oi->oi_size - skipped;
+    if (count > remaining) {
+        int status = change_size(oi, skipped + count);
+        if (status)
+            return status;
+    }
 
 	// Copy data block by block
-	while (amount < count && retval >= 0) {
+	while (amount < count) {
 		uint32_t blockno = ospfs_inode_blockno(oi, *f_pos);
-		uint32_t n;
+		uint32_t n, offset;
 		char *data;
 
-		if (blockno == 0) {
-			retval = -EIO;
-			goto done;
-		}
+		if (blockno == 0)
+            return -EIO;
 
-		data = ospfs_block(blockno);
+        offset = *f_pos % OSPFS_BLKSIZE;
+		data = (char*)ospfs_block(blockno) + offset;
 
 		// Figure out how much data is left in this block to write.
 		// Copy data from user space. Return -EFAULT if unable to read
 		// read user space.
 		// Keep track of the number of bytes moved in 'n'.
-		/* EXERCISE: Your code here */
-		retval = -EIO; // Replace these lines
-		goto done;
+        n = count - amount;
+        if (n > OSPFS_BLKSIZE - offset)
+            n = OSPFS_BLKSIZE - offset;
+        if (copy_from_user(data, buffer, n))
+            return -EFAULT;
 
 		buffer += n;
 		amount += n;
 		*f_pos += n;
 	}
 
-    done:
-	return (retval >= 0 ? amount : retval);
+    return amount;
 }
 
 
