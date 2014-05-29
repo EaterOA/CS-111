@@ -22,6 +22,7 @@
 #include <limits.h>
 #include "md5.h"
 #include "osp2p.h"
+#include <sys/wait.h>
 
 int evil_mode;			// nonzero iff this peer should behave badly
 
@@ -759,13 +760,33 @@ int main(int argc, char *argv[])
 	register_files(tracker_task, myalias);
 
 	// First, download files named on command line.
-	for (; argc > 1; argc--, argv++)
-		if ((t = start_download(tracker_task, argv[1])))
-			task_download(t, tracker_task);
+    // Fork a child to download each file that is available
+	for (; argc > 1; argc--, argv++) {
+        if ((t = start_download(tracker_task, argv[1]))) {
+            int pid = fork();
+            if (pid == 0) {
+                task_download(t, tracker_task);
+                _exit(0);
+            }
+            else if (pid < 0)
+                error("Unable to fork child to download");
+        }
+    }
+
+    // Reap children
+    int status;
+    while (wait(&status) > 0);
 
 	// Then accept connections from other peers and upload files to them!
-	while ((t = task_listen(listen_task)))
-		task_upload(t);
+	while ((t = task_listen(listen_task))) {
+        int pid = fork();
+        if (pid == 0) {
+            task_upload(t);
+            _exit(0);
+        }
+        else if (pid < 0)
+            error("Unable to fork child to upload");
+    }
 
 	return 0;
 }
