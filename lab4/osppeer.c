@@ -474,24 +474,19 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 	while (1) {
 		// Check for whether buffer is complete.
 		for (; pos+3 < tail; pos++) {
-            printf("WELL %lu\n", pos);
 			if ((pos == 0 || buf[pos-1] == '\n')) {
                 if (isdigit((unsigned char)buf[pos])) {
-                    if (buf[tail-1] != '\0' && buf[tail-1] != '\n') break;
+                    if (buf[tail-1] != '\n') break;
                     messagepos = pos;
+                    buf[tail] = '\0';
                     goto gtfo;
                 }
             }
-            printf("SUX %lu\n", pos);
         }
 
 		// If not, read more data.  Note that the read will not block
 		// unless NO data is available.
-        buf[tail] = '\0';
-        printf("%s / %s-------------------------------\n", filename, buf);
-        printf("HI\n");
         amt = read(tracker_task->peer_fd, &buf[tail], size - tail);
-        printf("HO\n");
 
         if (amt == -1 && (errno == EINTR || errno == EAGAIN
                   || errno == EWOULDBLOCK));
@@ -508,7 +503,6 @@ task_t *start_download(task_t *tracker_task, const char *filename)
                 size *= 2;
             }
         }
-        printf("HEY\n");
 	}
     gtfo:
 
@@ -817,22 +811,35 @@ int main(int argc, char *argv[])
 	listen_task = start_listen();
 	register_files(tracker_task, myalias);
 
-	// First, download files named on command line.
-    // Fork a child to download each file that is available
+	// First, convert each file name into download tasks, and store in a list
+    size_t dlist_len = 0, dlist_size = 4;
+    task_t** dlist = malloc(dlist_size * sizeof(task_t*));
 	for (; argc > 1; argc--, argv++) {
         if ((t = start_download(tracker_task, argv[1]))) {
-            int pid = fork();
-            if (pid == 0) {
-                task_download(t, tracker_task);
-                _exit(0);
+            if (dlist_len == dlist_size) {
+                dlist_size *= 2;
+                dlist = realloc(dlist, dlist_size * sizeof(task_t*));
+                if (!dlist)
+                    die("Unable to realloc memory for dlist");
             }
-            else if (pid < 0) {
-                error("Unable to fork child to download");
-                _exit(1);
-            }
-            task_free(t);
+            dlist[dlist_len++] = t;
         }
     }
+
+    // Start parallel downloads
+    unsigned i;
+    for (i = 0; i < dlist_len; i++) {
+        int pid = fork();
+        if (pid == 0) {
+            task_download(dlist[i], tracker_task);
+            _exit(0);
+        }
+        else if (pid < 0) {
+            die("Unable to fork child to download");
+        }
+        task_free(dlist[i]);
+    }
+    free(dlist);
 
     // Reap children
     int status;
