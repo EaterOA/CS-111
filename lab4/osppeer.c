@@ -605,6 +605,12 @@ static void task_download(task_t *t, task_t *tracker_task)
 			/* End of file */
 			break;
 
+        // Hard limit file size to 10 MB
+        if (t->total_written > 10*1024*1024) {
+            error("* File reached size limit, removing and trying next peer...");
+            goto try_again;
+        }
+
 		ret = write_from_taskbuf(t->disk_fd, t);
 		if (ret == TBUF_ERROR) {
 			error("* Disk write error");
