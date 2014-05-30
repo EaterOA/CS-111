@@ -59,7 +59,7 @@ typedef struct task {
 	int peer_fd;		// File descriptor to peer/tracker, or -1
 	int disk_fd;		// File descriptor to local file, or -1
 
-	char buf[TASKBUFSIZ];	// Bounded buffer abstraction
+    char buf[TASKBUFSIZ];	        // Bounded buffer abstraction
 	unsigned head;
 	unsigned tail;
 	size_t total_written;	// Total number of bytes written
@@ -285,13 +285,12 @@ int open_socket(struct in_addr addr, int port)
 //	is formatted badly.  (This code trusts the tracker.)
 static size_t read_tracker_response(task_t *t)
 {
-	char *s;
 	size_t split_pos = (size_t) -1, pos = 0;
 	t->head = t->tail = 0;
 
 	while (1) {
 		// Check for whether buffer is complete.
-		for (; pos+3 < t->tail; pos++)
+		for (; pos+3 < t->tail; pos++) {
 			if ((pos == 0 || t->buf[pos-1] == '\n')
 			    && isdigit((unsigned char) t->buf[pos])
 			    && isdigit((unsigned char) t->buf[pos+1])
@@ -306,6 +305,7 @@ static size_t read_tracker_response(task_t *t)
 					return split_pos;
 				}
 			}
+        }
 
 		// If not, read more data.  Note that the read will not block
 		// unless NO data is available.
@@ -460,16 +460,61 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 	char *s1, *s2;
 	task_t *t = NULL;
 	peer_t *p;
-	size_t messagepos;
 	assert(tracker_task->type == TASK_TRACKER);
 
 	message("* Finding peers for '%s'\n", filename);
 
 	osp2p_writef(tracker_task->peer_fd, "WANT %s\n", filename);
-	messagepos = read_tracker_response(tracker_task);
-	if (tracker_task->buf[messagepos] != '2') {
+
+    int amt;
+    size_t messagepos = (size_t) -1, pos = 0;
+    size_t head = 0, tail = 0, size = 512;
+    char* buf = malloc(size);
+
+	while (1) {
+		// Check for whether buffer is complete.
+		for (; pos+3 < tail; pos++) {
+            printf("WELL %lu\n", pos);
+			if ((pos == 0 || buf[pos-1] == '\n')) {
+                if (isdigit((unsigned char)buf[pos])) {
+                    if (buf[tail-1] != '\0' && buf[tail-1] != '\n') break;
+                    messagepos = pos;
+                    goto gtfo;
+                }
+            }
+            printf("SUX %lu\n", pos);
+        }
+
+		// If not, read more data.  Note that the read will not block
+		// unless NO data is available.
+        buf[tail] = '\0';
+        printf("%s / %s-------------------------------\n", filename, buf);
+        printf("HI\n");
+        amt = read(tracker_task->peer_fd, &buf[tail], size - tail);
+        printf("HO\n");
+
+        if (amt == -1 && (errno == EINTR || errno == EAGAIN
+                  || errno == EWOULDBLOCK));
+        else if (amt == -1)
+			die("tracker read error");
+        else if (amt == 0)
+			die("tracker connection closed prematurely!\n");
+        else {
+            tail += amt;
+            if (tail == size) {
+                buf = realloc(buf, size*2+1);
+                if (!buf)
+                    die("no memory to realloc for tracker WANT list");
+                size *= 2;
+            }
+        }
+        printf("HEY\n");
+	}
+    gtfo:
+
+	if (buf[messagepos] != '2') {
 		error("* Tracker error message while requesting '%s':\n%s",
-		      filename, &tracker_task->buf[messagepos]);
+		      filename, &buf[messagepos]);
 		goto exit;
 	}
 
@@ -480,18 +525,19 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 	strcpy(t->filename, filename);
 
 	// add peers
-	s1 = tracker_task->buf;
-	while ((s2 = memchr(s1, '\n', (tracker_task->buf + messagepos) - s1))) {
+	s1 = buf;
+	while ((s2 = memchr(s1, '\n', (buf + messagepos) - s1))) {
 		if (!(p = parse_peer(s1, s2 - s1)))
 			die("osptracker responded to WANT command with unexpected format!\n");
 		p->next = t->peer_list;
 		t->peer_list = p;
 		s1 = s2 + 1;
 	}
-	if (s1 != tracker_task->buf + messagepos)
+	if (s1 != buf + messagepos)
 		die("osptracker's response to WANT has unexpected format!\n");
 
  exit:
+    free(buf);
 	return t;
 }
 
@@ -631,6 +677,8 @@ static task_t *task_listen(task_t *listen_task)
 //	the requested file.
 static void task_upload(task_t *t)
 {
+    char buf[TASKBUFSIZ+1] = {0};
+
 	assert(t->type == TASK_UPLOAD);
 	// First, read the request from the peer.
 	while (1) {
@@ -644,12 +692,22 @@ static void task_upload(task_t *t)
 	}
 
 	assert(t->head == 0);
-	if (osp2p_snscanf(t->buf, t->tail, "GET %s OSP2P\n", t->filename) < 0) {
+	if (osp2p_snscanf(t->buf, t->tail, "GET %s OSP2P\n", buf) < 0) {
 		error("* Odd request %.*s\n", t->tail, t->buf);
 		goto exit;
 	}
 	t->head = t->tail = 0;
 
+    size_t size = strlen(buf);
+    if (size+1 > FILENAMESIZ) {
+        error("* File name too long %s\n", buf);
+        goto exit;
+    }
+    memcpy(t->filename, buf, size);
+    if (memchr(t->filename, '/', size)) {
+        error("* Illegal character in file name %s\n", t->filename);
+        goto exit;
+    }
 	t->disk_fd = open(t->filename, O_RDONLY);
 	if (t->disk_fd == -1) {
 		error("* Cannot open file %s", t->filename);
