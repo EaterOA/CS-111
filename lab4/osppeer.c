@@ -768,8 +768,11 @@ int main(int argc, char *argv[])
                 task_download(t, tracker_task);
                 _exit(0);
             }
-            else if (pid < 0)
+            else if (pid < 0) {
                 error("Unable to fork child to download");
+                _exit(1);
+            }
+            task_free(t);
         }
     }
 
@@ -779,13 +782,17 @@ int main(int argc, char *argv[])
 
 	// Then accept connections from other peers and upload files to them!
 	while ((t = task_listen(listen_task))) {
+        waitpid(-1, &status, WNOHANG);
         int pid = fork();
         if (pid == 0) {
             task_upload(t);
             _exit(0);
         }
-        else if (pid < 0)
+        else if (pid < 0) {
             error("Unable to fork child to upload");
+            _exit(1);
+        }
+        task_free(t);
     }
 
 	return 0;
