@@ -1,40 +1,113 @@
-# Fill in your name, student ID, and email address in this file.
-# If you are working in a team, fill out the information for both team 
-# members.
+# Fill in your name, student ID, and email address in this file.  If you are
+# working in a team, fill out the information for both team members.
 
 # SUBMIT THE LAB ONLY ONCE (from only one partner). This file will be
-# automatically parsed in order to give both team members credit for the
-# lab.
+# automatically parsed in order to give both team members credit for the lab.
 
-# You need to fill in the EXERCISE sections describing your solutions
-# for Tasks 1, 2, and 3, as well as write the corresponding code.
-# If you did one or more extra credit problems, indicate which one in the
-# appropriate section below (remove the # sign first). If you have any other
-# information you'd like us to know, please add it at the end of the file.
+# You need to fill in the EXERCISE sections describing your solutions for
+# Tasks 1, 2, and 3, as well as write the corresponding code.  If you did one
+# or more extra credit problems, indicate which one in the appropriate section
+# below (remove the # sign first). If you have any other information you'd
+# like us to know, please add it at the end of the file.
 
 # Partner 1
-Name: 
+Name: Vincent Wong
 Student ID: 
 Email: 
 
 # Partner 2 (if you're working in a team)
-Name: 
+Name: Eric Du
 Student ID: 
 Email: 
 
-# EXERCISE 1: What method you used to make your peer download and upload
-#    files in parallel?  (~1-3 sentences)
+# EXERCISE 1: What method you used to make your peer download and upload files
+# in parallel?  (~1-3 sentences)
+In the start_download loop inside the main function, instead of starting each
+download task right away, we store the tasks in a dynamic array of download
+tasks. After processing all the filenames, we go through our task list and
+fork child processes to download each task. The parent then waits on its
+children until all the downloads are done.
 
-# EXERCISE 2A: What conditions did you find and fix that would have
-#    triggered a buffer overrun bug?  (~1-3 sentences each)
+For the uploads, we simply fork a process to execute task_upload everytime we
+accept a task from task_listen.
+
+# EXERCISE 2A: What conditions did you find and fix that would have triggered
+# a buffer overrun bug?  (~1-3 sentences each)
+In start_download and task_download, strcpy is called to copy the filename
+arguments to the task filename buffer. This will overflow if the download
+filenames are longer than 255 characters. We fixed it by using strncpy with a
+limit of FILENAMESIZ-1.  You can find this in lines 519 and 577
+
+Also, in task_upload, when a peer connects and sends a GET request, the
+osp2p_snscanf used to parse the filename can overflow the task filename
+buffer. To solve this, we first save the filename in a larger local buffer of
+4096 bytes, check its length, and only store it in the 256-byte filename
+buffer if it can fit.  You can find this in lines 701-706
 
 # EXERCISE 2B: What other robustness problems did you fix?  (~1-3 sentences
-#    each)
+# each)
+We fixed the issue of peers being allowed to request files outside the current
+directory.  We simply check the requested filename, and refuse the serve the
+file if it contains a / character in it.  You can find this in lines 707-710
 
-# EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why
-#    are they attacks?  (~3-10 sentences each)
+We fixed the issue of peers continuously sending us data and filling up our
+disk space. To resolve this, inside task_download we check how much data we've
+received so far. If we receive more than 10 MB, we treat that as an error,
+delete the file, and try a different peer.  You can find this in lines 609-612
+
+Another issue is that peers can connect and not say GET, hogging the socket
+forever.  Once way to resolve this is to use the select() system call, which
+can ensure that there will always be data that can be read from a file
+descriptor. It can also time out if no data arrives, allowing the program to
+terminate the connection. An implementation might look something like this:
+while (1):
+    status = select(socket, timeout)
+    if (status == DATA):
+        read(socket, data)
+        process(data)
+    else if (status == TIMEOUT):
+        error("Timed out")
+        close(socket)
+The same issue goes from trying to download from a peer that doesn't send you
+anything.  A select can be used to time out from uncooperative peers.
+
+# EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why are
+# they attacks?  (~3-10 sentences each)
+An uploader attack that we can do is, when a peer requests a file from us, we
+instead open and send data from /dev/urandom. If the peer doesn't have a
+filesize limit as discussed above, their disk space will be filled. An
+implementation might look like:
+if (evil_mode):
+    fd = strcpy(filename, "/dev/urandom")
+    while (1):
+        read(fd, buf)
+        write(socket, buf)
+
+A downloader attack that we can do is to try requesting files with really long
+names from peers. If the peer uses the skeleton code's filename buffer of 256
+bytes, then GETting a 4000-byte filename will cause that peer to segfault. To
+find peers to attack, simply ask the tracker for a list of who's registered:
+if (evil_mode):
+    write(tracker_socket, "WHO")
+    read(response, tracker_socket)
+    char longname[4000]
+    memset(longname, 'A', 4000)
+    for peer in response:
+        peer_socket = connect(peer)
+        write(peer_socket, "GET " + longname + " OSP2P") 
 
 # Extra credit problems
-#Extra credit problem: none
+Extra credit problem: File Integrity
+
+The OSP2P trackers support an RPC called MD5SUM, which reports the base64 md5
+digest of a given file. When peers register with the tracker and call HAVE,
+they can optionally give an md5sum as another argument, letting the tracker
+know the md5sum associated with a file. Peers who finish downloading a file
+can check the integrity of their file by comparing its checksum to the one
+reported by the tracker.  Of course, the tracker does not know whether the
+md5sum that was given to it is legitimate or not, so doing this is still
+risky. A malicious uploader can just as easily report the checksum of a
+corrupted file and let people download it. So we still have to at least trust
+the initial seeder.
 
 # Add any other information you'd like us to know below this line.
