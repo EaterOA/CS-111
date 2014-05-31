@@ -23,10 +23,10 @@ Email:
 # EXERCISE 1: What method you used to make your peer download and upload files
 # in parallel?  (~1-3 sentences)
 In the start_download loop inside the main function, instead of starting each
-download task right away, we store the tasks in a dynamic array of download
+download task right away, we store them in a dynamic array of download
 tasks. After processing all the filenames, we go through our task list and
 fork child processes to download each task. The parent then waits on its
-children until all the downloads are done.
+children until all the downloads are finished.
 
 For the uploads, we simply fork a process to execute task_upload everytime we
 accept a task from task_listen.
@@ -36,40 +36,54 @@ accept a task from task_listen.
 In start_download and task_download, strcpy is called to copy the filename
 arguments to the task filename buffer. This will overflow if the download
 filenames are longer than 255 characters. We fixed it by using strncpy with a
-limit of FILENAMESIZ-1.  You can find this in lines 519 and 577
+limit of FILENAMESIZ-1.
+You can find this in lines 519 and 577
 
 Also, in task_upload, when a peer connects and sends a GET request, the
 osp2p_snscanf used to parse the filename can overflow the task filename
 buffer. To solve this, we first save the filename in a larger local buffer of
 4096 bytes, check its length, and only store it in the 256-byte filename
-buffer if it can fit.  You can find this in lines 701-706
+buffer if it can fit.
+You can find this in lines 701-706
 
 # EXERCISE 2B: What other robustness problems did you fix?  (~1-3 sentences
 # each)
 We fixed the issue of peers being allowed to request files outside the current
-directory.  We simply check the requested filename, and refuse the serve the
-file if it contains a / character in it.  You can find this in lines 707-710
+directory.  We simply check the requested filename, and refuse to serve the
+file if it contains a / character in it.
+You can find this in lines 707-710
 
 We fixed the issue of peers continuously sending us data and filling up our
 disk space. To resolve this, inside task_download we check how much data we've
 received so far. If we receive more than 10 MB, we treat that as an error,
-delete the file, and try a different peer.  You can find this in lines 609-612
+delete the file, and try a different peer.
+You can find this in lines 609-612
 
 Another issue is that peers can connect and not say GET, hogging the socket
-forever.  Once way to resolve this is to use the select() system call, which
+forever. One way to resolve this is to use the select() system call, which
 can ensure that there will always be data that can be read from a file
 descriptor. It can also time out if no data arrives, allowing the program to
 terminate the connection. An implementation might look something like this:
-while (1):
+while 1:
     status = select(socket, timeout)
-    if (status == DATA):
+    if status == DATA:
         read(socket, data)
         process(data)
-    else if (status == TIMEOUT):
+    elif status == TIMEOUT:
         error("Timed out")
         close(socket)
-The same issue goes from trying to download from a peer that doesn't send you
-anything.  A select can be used to time out from uncooperative peers.
+The same issue goes for trying to download from a peer that doesn't send you
+anything.  A select can be used to time out from those uncooperative peers.
+
+Yet another issue is when a peer performs a denial of service attack by establishing
+tons of connections to us, filling up our file descriptor table. This problem
+can be mitigated if we keep track of what IP's we are connected to, and limit each
+IP to no more than an x number of connections:
+fd, peer_addr = accept()
+if connected[peer_addr] == x:
+    close(fd)
+else:
+    connected[peer_addr]++
 
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why are
 # they attacks?  (~3-10 sentences each)
@@ -77,21 +91,22 @@ An uploader attack that we can do is, when a peer requests a file from us, we
 instead open and send data from /dev/urandom. If the peer doesn't have a
 filesize limit as discussed above, their disk space will be filled. An
 implementation might look like:
-if (evil_mode):
-    fd = strcpy(filename, "/dev/urandom")
-    while (1):
+if evil_mode:
+    fd = open("/dev/urandom")
+    while 1:
         read(fd, buf)
         write(socket, buf)
 
 A downloader attack that we can do is to try requesting files with really long
-names from peers. If the peer uses the skeleton code's filename buffer of 256
+names from peers. If the peer use the skeleton code's filename buffer of 256
 bytes, then GETting a 4000-byte filename will cause that peer to segfault. To
-find peers to attack, simply ask the tracker for a list of who's registered:
-if (evil_mode):
+find peers to attack, simply ask the tracker for a list of who's registered.
+Here's some pseudo-code:
+if evil_mode:
     write(tracker_socket, "WHO")
     read(response, tracker_socket)
     char longname[4000]
-    memset(longname, 'A', 4000)
+    memset(longname, 'a', 4000)
     for peer in response:
         peer_socket = connect(peer)
         write(peer_socket, "GET " + longname + " OSP2P") 
@@ -104,10 +119,27 @@ digest of a given file. When peers register with the tracker and call HAVE,
 they can optionally give an md5sum as another argument, letting the tracker
 know the md5sum associated with a file. Peers who finish downloading a file
 can check the integrity of their file by comparing its checksum to the one
-reported by the tracker.  Of course, the tracker does not know whether the
+reported by the tracker. Of course, the tracker does not know whether the
 md5sum that was given to it is legitimate or not, so doing this is still
 risky. A malicious uploader can just as easily report the checksum of a
 corrupted file and let people download it. So we still have to at least trust
 the initial seeder.
+
+Implementing this would not be hard. After finishing downloading a file in
+task_download, we can compute its md5 digest using functions from md5.h. We
+then ask the tracker for the file's checksum. If the checksums match, the file
+is good. If they do not, then the file is discarded. If the tracker doesn't
+have a record for it, then we assume it's good. Pseudo-code:
+md5_init(chk);
+while 1:
+    read(file, buf)
+    md5_append(chk, buf)
+md5_finish_text(chk, digest);
+write(tracker_socket, "MD5SUM " + filename)
+read(tracker_socket, response)
+if !response or response == digest:
+    return FILE_IS_GOOD
+else:
+    return FILE_IS_BAD
 
 # Add any other information you'd like us to know below this line.
