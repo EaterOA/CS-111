@@ -37,27 +37,27 @@ In start_download and task_download, strcpy is called to copy the filename
 arguments to the task filename buffer. This will overflow if the download
 filenames are longer than 255 characters. We fixed it by using strncpy with a
 limit of FILENAMESIZ-1.
-You can find this in lines 519 and 577
+You can find this in lines 532 and 590
 
 Also, in task_upload, when a peer connects and sends a GET request, the
 osp2p_snscanf used to parse the filename can overflow the task filename
 buffer. To solve this, we first save the filename in a larger local buffer of
 4096 bytes, check its length, and only store it in the 256-byte filename
 buffer if it can fit.
-You can find this in lines 701-706
+You can find this in lines 757-761
 
 # EXERCISE 2B: What other robustness problems did you fix?  (~1-3 sentences
 # each)
 We fixed the issue of peers being allowed to request files outside the current
 directory.  We simply check the requested filename, and refuse to serve the
 file if it contains a / character in it.
-You can find this in lines 707-710
+You can find this in lines 762-765
 
 We fixed the issue of peers continuously sending us data and filling up our
 disk space. To resolve this, inside task_download we check how much data we've
 received so far. If we receive more than 10 MB, we treat that as an error,
 delete the file, and try a different peer.
-You can find this in lines 609-612
+You can find this in lines 622-625
 
 Another issue is that peers can connect and not say GET, hogging the socket
 forever. One way to resolve this is to use the select() system call, which
@@ -73,17 +73,23 @@ while 1:
         error("Timed out")
         close(socket)
 The same issue goes for trying to download from a peer that doesn't send you
-anything.  A select can be used to time out from those uncooperative peers.
+anything. A select can be used to time out from those uncooperative peers.
 
-Yet another issue is when a peer performs a denial of service attack by establishing
-tons of connections to us, filling up our file descriptor table. This problem
-can be mitigated if we keep track of what IP's we are connected to, and limit each
-IP to no more than an x number of connections:
+Yet another issue is when a peer performs a denial of service attack by
+establishing tons of connections to us, filling up our file descriptor table.
+This problem can be mitigated if we keep track of what IP's we are connected
+to, and limit each IP to no more than an x number of connections:
 fd, peer_addr = accept()
 if connected[peer_addr] == x:
     close(fd)
 else:
     connected[peer_addr]++
+
+A simpler solution to the above that we implemented is to limit the number of
+connections we make globally to, say, 10 only. You can find this in lines
+670-675
+A loop blocks new connections while checking once per second if any
+old connections have ended.
 
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why are
 # they attacks?  (~3-10 sentences each)
@@ -143,3 +149,23 @@ else:
     return FILE_IS_BAD
 
 # Add any other information you'd like us to know below this line.
+
+Although we described theoretical attacks that an evil_mode can do, in fact we
+have actually implemented an evil mode, although in the interests of not
+bothering our classmates too much we wrote it to be silly but not actively
+malicious. It gives itself an alias of GAO_GAO_EVIL_PEER, and automatically
+registers 5 files: cat1.jpg, cat2.jpg, cat3.jpg, urandom, and blockforever. In
+reality, it only serves four physical files: doge.jpg, fakeoverflow.txt,
+fakeanswers.txt, and fakeosppeer.c. When somebody requests a file with "cat"
+in it, it serves doge.jpg; when someone tries to overflow our filename buffer,
+it serves fakeoverflow.txt; when someone requests "../answers.txt", it serves
+fakeanswers.txt; and when someone requests "../osppeer.c", it serves
+fakeosppeer.c. It provides a service in that if a peer decides to get
+"urandom", it will send data from /dev/urandom, and if a peer wants
+"blockforever", it will maintain the connection while sending no data. It
+spawns a subprocess that issues an RPC to the tracker once every 60s to keep
+its registration alive. It is best executed as a background task while sending
+all its output (it also notes the datetime of each connection) to a log file.
+
+You can find its code sprinkled around osppeer.c under "if (evil_mode)" blocks.
+
